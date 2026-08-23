@@ -25,13 +25,15 @@ async function loadDesktop() {
     document.querySelectorAll("[data-producer-module-link]").forEach(element=>element.hidden=!producerInstalled);
     version.textContent = info.version;
     boards.innerHTML = data.items.map(board => `
-      <a class="desktop-board" href="/display/${encodeURIComponent(board.slug)}">
+      <article class="desktop-board">
+        <a class="desktop-board-open" href="/display/${encodeURIComponent(board.slug)}">
         <span class="desktop-board-sign" aria-hidden="true">
           <img src="/static/churchboard-icon.png" alt="">
           <span class="desktop-board-letter-track">${boardLetters(board.name)}</span>
         </span>
-        <span class="desktop-board-copy"><strong>${escapeHtml(board.name)}</strong><small>Open display</small></span>
-      </a>`).join("") || '<p class="muted">No boards are configured yet.</p>';
+        <span class="desktop-board-copy"><strong>${escapeHtml(board.name)}</strong><small>Open display</small></span></a>
+        <span class="desktop-board-actions"><a href="/display/${encodeURIComponent(board.slug)}?edit=1">Edit</a><button type="button" data-duplicate-board="${escapeHtml(board.slug)}">Duplicate</button></span>
+      </article>`).join("") || '<p class="muted">No boards are configured yet.</p>';
   } catch (error) {
     boards.innerHTML = '<p class="muted">ChurchBoard could not load the board list.</p>';
   }
@@ -40,6 +42,19 @@ async function loadDesktop() {
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[character]);
 }
+
+function boardSlug(name) {
+  return String(name||"board").toLocaleLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"board";
+}
+
+document.querySelector("#create-board").addEventListener("click", async () => {
+  const name=prompt("Name this board:","New Board")?.trim();if(!name)return;
+  const existing=await fetch("/api/dashboards").then(response=>response.json()),used=new Set((existing.items||[]).flatMap(item=>[item.id,item.slug]));let slug=boardSlug(name),number=2;while(used.has(slug))slug=`${boardSlug(name)}-${number++}`;
+  const response=await fetch("/api/dashboards",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:slug,name,slug,background_color:"#0a0d12",columns:12,row_height:72,widgets:[]})}),result=await response.json();
+  if(!response.ok){alert(result.detail||"The board could not be created.");return}location.href=`/display/${encodeURIComponent(result.slug)}?edit=1`;
+});
+
+boards.addEventListener("click",async event=>{const button=event.target.closest("[data-duplicate-board]");if(!button)return;event.preventDefault();button.disabled=true;button.textContent="Duplicating…";try{const response=await fetch(`/api/dashboards/${encodeURIComponent(button.dataset.duplicateBoard)}/duplicate`,{method:"POST"}),result=await response.json();if(!response.ok)throw new Error(result.detail||"The board could not be duplicated.");await loadDesktop();const copy=[...boards.querySelectorAll(".desktop-board")].find(card=>card.querySelector(".desktop-board-copy strong")?.textContent===result.name);copy?.scrollIntoView({behavior:"smooth",block:"nearest"})}catch(error){alert(error.message);button.disabled=false;button.textContent="Duplicate"}});
 
 async function checkForUpdates() {
   const button = document.querySelector("#check-update");

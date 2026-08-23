@@ -45,6 +45,7 @@ def default_data() -> dict[str, Any]:
                 "detail_refresh_seconds": 5,
                 "live_from_propresenter": {
                     "enabled": False,
+                    "source": "propresenter",
                     "auto_take_control": True,
                     "songs_only": True,
                     "allow_previous": False,
@@ -54,6 +55,7 @@ def default_data() -> dict[str, Any]:
                 },
             },
             "propresenter": {"enabled": False, "host": "127.0.0.1", "port": 50001, "refresh_seconds": 0.075, "remote_control_enabled": False},
+            "proclaim": {"enabled": False, "host": "127.0.0.1", "port": 52195, "password": "", "refresh_seconds": 0.12, "planning_center_control": True, "ndi_source_name": ""},
             "mics": {"use_planning_center_positions": True},
             "shure": {"enabled": False, "refresh_seconds": 0.5, "receivers": [], "mics": []},
             "sennheiser": {"enabled": False, "refresh_seconds": 0.5, "receivers": [], "mics": []},
@@ -117,7 +119,7 @@ class ConfigStore:
             baseline = default_data()
             baseline.update(raw)
             baseline["settings"] = {**default_data()["settings"], **raw.get("settings", {})}
-            for section in ("planning_center", "propresenter", "mics", "shure", "sennheiser", "open_sound_meter", "prodmesh_rta", "behringer", "restream", "obs", "lighting", "ndi", "intercom", "server"):
+            for section in ("planning_center", "propresenter", "proclaim", "mics", "shure", "sennheiser", "open_sound_meter", "prodmesh_rta", "behringer", "restream", "obs", "lighting", "ndi", "intercom", "server"):
                 baseline["settings"][section] = {
                     **default_data()["settings"][section],
                     **raw.get("settings", {}).get(section, {}),
@@ -221,6 +223,9 @@ class ConfigStore:
         lighting = settings.get("lighting", {})
         lighting["password_configured"] = bool(lighting.get("password"))
         lighting["password"] = ""
+        proclaim = settings.get("proclaim", {})
+        proclaim["password_configured"] = bool(proclaim.get("password"))
+        proclaim["password"] = ""
         intercom = settings.get("intercom", {})
         intercom["api_secret_configured"] = bool(intercom.get("api_secret"))
         intercom["api_key"] = ""

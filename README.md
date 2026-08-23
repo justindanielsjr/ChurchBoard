@@ -6,7 +6,7 @@
 
 <h1 align="center">ChurchBoard</h1>
 
-ChurchBoard is a cross-platform production dashboard for churches. It combines Planning Center schedules and people, ProPresenter slides and service flow, Shure QLX-D/ULX-D/SLX-D and Sennheiser EW-DX microphone telemetry, touch-friendly Behringer X32/M32/WING mixer control, Open Sound Meter and ProdMesh RTA levels, ShowXpress/TLC lighting controls, OBS Studio health, and Restream broadcast status in configurable displays for the stage, green room, audio booth, and production team.
+ChurchBoard is a cross-platform production dashboard for churches. It combines Planning Center schedules and people, ProPresenter or Faithlife Proclaim slides and service flow, Shure QLX-D/ULX-D/SLX-D and Sennheiser EW-DX microphone telemetry, touch-friendly Behringer X32/M32/WING mixer control, Open Sound Meter and ProdMesh RTA levels, ShowXpress/TLC lighting controls, OBS Studio health, and Restream broadcast status in configurable displays for the stage, green room, audio booth, and production team.
 
 ChurchBoard 2 adds a mobile-friendly Producer workspace, a Companion-style module manager, automatic per-service-time rosters, locally mirrored Planning Center resources, optional NDI® video, native WebSocket ProdMesh RTA rendering, ShowXpress/TLC lighting control, and a ChurchBoard-hosted LiveKit Producer party-line intercom. See the [Producer workspace guide](docs/PRODUCER.md) and [ChurchBoard modules](docs/MODULES.md).
 
@@ -29,6 +29,8 @@ See ChurchBoard in action and follow the setup walkthrough in the **[ChurchBoard
 - A read-only ProPresenter timers widget showing each timer's current value and state
 - A ProPresenter macros widget that can show every macro or an operator-safe selection and trigger them by stable ID
 - ProPresenter item title, part labels and colors, slide number, and notes
+- Faithlife Proclaim current/next slide text, rendered NDI output, direct slide and item controls, an auto-scrolling service playlist, and target-duration timers
+- Proclaim-driven Planning Center order and Services LIVE synchronization using the imported plan's exact item position, including repeated item names
 - Compact, complete scrollable, or fit-to-board Planning Center orders of service—including pre-service and post-service sections—with durations, estimated clock times, leaders, and mapped microphones
 - Current item and overall service timing
 - Team-member lists with photos, filtered by team and position
@@ -60,27 +62,26 @@ Choose your computer and click its download link:
 
 | Your computer | Download |
 | --- | --- |
-| **Windows 10 or 11** | **[Download the Windows installer (.exe)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.7-Windows-x64-Setup.exe)** |
-| **Mac with Apple silicon** — M1 or newer | **[Download the Apple silicon Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.7-macOS-arm64.dmg)** |
-| **Mac with an Intel processor** | **[Download the Intel Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.7-macOS-x86_64.dmg)** |
-| **Ubuntu or Debian Linux** | **[Download the Linux installer (.deb)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.7-Linux-amd64.deb)** |
-| **Other 64-bit desktop Linux** | **[Download the portable Linux package (.tar.gz)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.7-Linux-x86_64.tar.gz)** |
+| **Windows 10 or 11** | **[Download the Windows installer (.exe)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Windows-x64-Setup.exe)** |
+| **Mac with Apple silicon** — M1 or newer | **[Download the Apple silicon Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-macOS-arm64.dmg)** |
+| **Mac with an Intel processor** | **[Download the Intel Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-macOS-x86_64.dmg)** |
+| **Ubuntu or Debian Linux** | **[Download the Linux installer (.deb)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Linux-amd64.deb)** |
+| **Other 64-bit desktop Linux** | **[Download the portable Linux package (.tar.gz)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Linux-x86_64.tar.gz)** |
 
 Not sure which Mac you have? Choose **Apple menu → About This Mac**. If it says **Chip**, use Apple silicon. If it says **Processor**, use Intel.
 
 **Raspberry Pi:** jump to the [one-command Raspberry Pi installer](#raspberry-pi).
 
-[View all v2.0.7 downloads and release notes](https://github.com/wtapper89/ChurchBoard/releases/tag/v2.0.7)
+[View all v2.0.8 downloads and release notes](https://github.com/wtapper89/ChurchBoard/releases/tag/v2.0.8)
 
-### What's new in 2.0.4
+### What's new in 2.0.8
 
-- Adds full-page personal monitor mixes with live, bidirectional X32/M32/WING levels and On states.
-- Lets administrators and editors open any scheduled person’s mapped mix and lets volunteers recall saved personal settings.
-- Improves Order of Service readability, multiple colored Planning Center note fields, and multiple leaders with individually matched microphones.
-- Makes fitted service orders prioritize readable current and upcoming information rather than shrinking the complete plan.
-- Uses live console channel names on Behringer dashboard and personal-mix faders.
-- Improves touch and mouse fader handling, reliable negative-infinity positioning, and mobile horizontal scrolling.
-- Simplifies module setup and adds safer independently updateable module support.
+- Adds Faithlife Proclaim as a presentation source with current/next slide text, NDI output, and operator controls.
+- Adds interactive, auto-scrolling Proclaim playlist and Proclaim timer widgets.
+- Lets Proclaim drive the Planning Center order, Services LIVE position, and ChurchBoard timing.
+- Matches imported plans by exact service-item position so repeated titles do not select the wrong item.
+- Restores board creation and adds board duplication from the desktop control page.
+- Improves name-only photo cards with a responsive liquid-glass treatment.
 
 ## Install
 

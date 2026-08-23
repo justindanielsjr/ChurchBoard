@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models import Dashboard
-from app.modules.planning_center import PlanningCenterClient, calculate_timing, consolidate_people, item_leader, people_for_service_time, position_key, selected_service_time, service_items
+from app.modules.planning_center import PlanningCenterClient, calculate_timing, consolidate_people, item_leader, people_for_service_time, person_photo_url, position_key, selected_service_time, service_items
 from app.modules.livekit import HostedIntercomServer, access_token
 from app.modules.ndi import NDIRuntime
 from app.modules.media_cache import PlanningCenterMediaCache
@@ -27,6 +27,21 @@ from app.store import ConfigStore
 
 
 class ModuleIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_planning_center_initials_avatar_is_not_treated_as_a_photo(self):
+        self.assertEqual(person_photo_url("https://avatars.planningcenteronline.com/uploads/initials/WT.png"), "")
+        portrait = "https://avatars.planningcenteronline.com/uploads/person/123/avatar.png"
+        self.assertEqual(person_photo_url("", portrait), portrait)
+
+    async def test_proclaim_moves_the_order_of_service_pointer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = RuntimeService(ConfigStore(Path(folder) / "churchboard.json"))
+            state = runtime.demo_state()
+            target = state["service"]["items"][1]
+            runtime._apply_proclaim_target(state, target, {"presentation_id": "proclaim-service"})
+            self.assertEqual(state["timing"]["current_item"]["id"], target["id"])
+            self.assertEqual(state["timing"]["source"], "proclaim")
+            await runtime.close()
+
     async def test_prodmesh_rta_combines_level_and_band_payloads(self):
         class Response:
             def __init__(self, payload): self.payload = payload
@@ -967,6 +982,38 @@ class RuntimeAssignmentTests(unittest.TestCase):
 
 
 class ProPresenterLiveSyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_proclaim_can_be_the_explicit_services_live_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = RuntimeService(ConfigStore(Path(directory) / "state.json"))
+            state = {
+                "service": {"id": "plan", "starts_at": "2030-01-01T12:00:00+00:00", "items": [
+                    {"id": "1", "title": "Welcome", "item_type": "item", "length": 60, "starts_after": 0},
+                    {"id": "2", "title": "Message", "item_type": "item", "length": 120, "starts_after": 60},
+                ]},
+                "proclaim": {"connected": True, "on_air": True, "presentation_id": "proclaim-plan", "current": {"title": "Message"}},
+                "propresenter": {"connected": True, "title": "Wrong item", "presentation_uuid": "ignored"},
+                "timing": {"current_item": {"id": "1"}},
+            }
+
+            class LiveClient:
+                configured = True
+                def __init__(self): self.current, self.actions = "1", []
+                async def live_status(self, _plan, create=False):
+                    return {"id": "live", "has_control": True, "current_item_id": self.current}
+                async def live_action(self, _plan, _live, action):
+                    self.actions.append(action)
+                    if action == "go_to_next_item": self.current = "2"
+                    return await self.live_status(_plan)
+
+            client = LiveClient()
+            settings = {"enabled": True, "source": "proclaim", "auto_take_control": True, "songs_only": False, "allow_previous": False, "match_mode": "exact", "stable_seconds": 0, "refresh_seconds": 2}
+            await runtime._sync_propresenter_live(state, client, settings, 10)
+            await runtime._sync_propresenter_live(state, client, settings, 10.1)
+            self.assertEqual(client.actions, ["go_to_next_item"])
+            self.assertEqual(state["timing"]["current_item"]["id"], "2")
+            self.assertEqual(state["planning_center_live"]["source"], "proclaim")
+            self.assertIn("Proclaim", state["planning_center_live"]["message"])
+
     async def test_stable_presentation_takes_control_and_advances_live(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = RuntimeService(ConfigStore(Path(directory) / "state.json"))

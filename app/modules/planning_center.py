@@ -10,6 +10,15 @@ import httpx
 API_ROOT = "https://api.planningcenteronline.com/services/v2"
 
 
+def person_photo_url(*values: Any) -> str:
+    """Return a real portrait, excluding Planning Center's initials image."""
+    for value in values:
+        url = str(value or "").strip()
+        if url and "/uploads/initials/" not in url.casefold():
+            return url
+    return ""
+
+
 def item_leader(attributes: dict[str, Any], notes: list[dict[str, Any]]) -> str:
     def clean(value: Any) -> str:
         text = re.sub(r"<[^>]+>", " ", str(value or ""))
@@ -434,7 +443,7 @@ class PlanningCenterClient:
                         "id": str(row.get("id") or ""),
                         "name": name,
                         "email": str(attrs.get("email") or ""),
-                        "photo": str(attrs.get("photo_url") or attrs.get("photo_thumbnail_url") or ""),
+                        "photo": person_photo_url(attrs.get("photo_url"), attrs.get("photo_thumbnail_url")),
                     })
             if len(rows) < 100:
                 break
@@ -486,7 +495,7 @@ class PlanningCenterClient:
                 "position_key": position_key(team_id, position_name),
                 "team_id": team_id,
                 "team_name": team_name,
-                "photo": person_attrs.get("photo_url") or attrs.get("photo_thumbnail") or person_attrs.get("photo_thumbnail_url") or "",
+                "photo": person_photo_url(person_attrs.get("photo_url"), attrs.get("photo_thumbnail"), person_attrs.get("photo_thumbnail_url")),
                 "status": attrs.get("status", ""),
                 "service_time_ids": [str(value.get("id") or "") for value in service_time_rows if value.get("id")],
             })

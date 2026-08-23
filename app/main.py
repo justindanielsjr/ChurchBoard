@@ -32,6 +32,7 @@ from app.modules.runtime import RuntimeService
 from app.modules.spl_reports import SPLReportStore
 from app.modules.planning_center import PlanningCenterClient
 from app.modules.propresenter import ProPresenterClient
+from app.modules.proclaim import ProclaimClient
 from app.modules.restream import RestreamClient
 from app.modules.livekit import access_token as livekit_access_token
 from app.modules.prodmesh_rta import ProdMeshRTAClient
@@ -91,6 +92,13 @@ class ProPresenterSlideTrigger(BaseModel):
 class ProPresenterNavigationRequest(BaseModel):
     dashboard_slug: str | None = None
     widget_id: str | None = None
+
+
+class ProclaimCommandRequest(BaseModel):
+    dashboard_slug: str | None = None
+    widget_id: str | None = None
+    item_index: int | None = None
+    slide_index: int | None = None
 
 
 class ProPresenterMacroTrigger(ProPresenterNavigationRequest):
@@ -490,6 +498,33 @@ async def create_dashboard(payload: Dashboard, request: Request) -> dict:
     return dashboard
 
 
+@app.post("/api/dashboards/{identifier}/duplicate", status_code=201)
+async def duplicate_dashboard(identifier: str, request: Request) -> dict:
+    require_role(request, "admin", "editor")
+    store = store_from(request)
+    data = store.load()
+    source = next((item for item in data["dashboards"] if item["id"] == identifier or item["slug"] == identifier), None)
+    if source is None:
+        raise HTTPException(404, "Dashboard not found")
+    existing = {str(value) for item in data["dashboards"] for value in (item.get("id"), item.get("slug"))}
+    base = re.sub(r"[^a-z0-9]+", "-", str(source.get("slug") or source.get("name") or "board").casefold()).strip("-") or "board"
+    new_slug, number = f"{base}-copy", 2
+    while new_slug in existing:
+        new_slug, number = f"{base}-copy-{number}", number + 1
+    duplicate = deepcopy(source)
+    duplicate.update({"id": new_slug, "slug": new_slug, "name": f"{source.get('name') or 'Board'} Copy"})
+    duplicate["widgets"] = [{**widget, "id": f"{widget.get('type') or 'widget'}-{uuid4().hex[:10]}"} for widget in duplicate.get("widgets", [])]
+    duplicate = persist_livestream_secrets(data, Dashboard.model_validate(duplicate).model_dump())
+    vault = data.setdefault("secrets", {}).setdefault("livestream", {})
+    source_id = str(source.get("id") or "")
+    for key, value in list(vault.items()):
+        if key.startswith(f"{source_id}:"):
+            vault[f"{new_slug}:{key.split(':', 1)[1]}"] = deepcopy(value)
+    data["dashboards"].append(duplicate)
+    store.save(data)
+    return duplicate
+
+
 @app.put("/api/dashboards/{identifier}")
 async def update_dashboard(identifier: str, payload: Dashboard, request: Request) -> dict:
     require_role(request, "admin", "editor")
@@ -606,6 +641,8 @@ async def update_settings(payload: SettingsUpdate, request: Request) -> dict:
         settings.setdefault("obs", {})["password"] = data["settings"].get("obs", {}).get("password", "")
     if not settings.get("lighting", {}).get("password"):
         settings.setdefault("lighting", {})["password"] = data["settings"].get("lighting", {}).get("password", "")
+    if not settings.get("proclaim", {}).get("password"):
+        settings.setdefault("proclaim", {})["password"] = data["settings"].get("proclaim", {}).get("password", "")
     intercom = settings.setdefault("intercom", {})
     existing_intercom = data["settings"].get("intercom", {})
     if intercom.get("enabled"):
@@ -1212,6 +1249,7 @@ async def get_runtime(request: Request, compact: bool = False) -> dict:
             "mics",
             "use_planning_center_for_mics",
             "propresenter",
+            "proclaim",
             "planning_center_live",
             "service_control",
             "osm",
@@ -1679,6 +1717,78 @@ async def planning_center_people(request: Request) -> dict:
     except Exception as exc:
         raise HTTPException(502, f"Could not load Planning Center people: {exc}") from exc
     return {"items": people, "count": len(people)}
+
+
+@app.post("/api/integrations/proclaim/test")
+async def proclaim_test(request: Request) -> dict:
+    settings = store_from(request).load()["settings"].get("proclaim", {})
+    client = ProclaimClient(settings)
+    if not client.configured:
+        raise HTTPException(400, "Enable Proclaim and enter its computer address first")
+    try:
+        status = await client.status()
+    except Exception as exc:
+        raise HTTPException(502, f"Could not reach Proclaim: {exc}") from exc
+    finally:
+        await client.close()
+    return {"ok": True, "message": "Proclaim is connected" + (" and on air." if status.get("on_air") else ".")}
+
+
+def require_proclaim_widget_control(request: Request, dashboard_slug: str | None, widget_id: str | None) -> dict:
+    data = store_from(request).load()
+    dashboard = next((item for item in data.get("dashboards", []) if str(item.get("slug") or "") == str(dashboard_slug or "")), None)
+    widget = next((item for item in (dashboard or {}).get("widgets", []) if str(item.get("id") or "") == str(widget_id or "")), None)
+    if not widget or widget.get("type") not in {"proclaim_controls", "proclaim_playlist"} or widget.get("settings", {}).get("allow_remote_trigger") is False:
+        raise HTTPException(403, "Enable Proclaim control in this widget's settings")
+    return data["settings"].get("proclaim", {})
+
+
+@app.post("/api/integrations/proclaim/command/{action}")
+async def proclaim_command(action: str, payload: ProclaimCommandRequest, request: Request) -> dict:
+    commands = {"previous-slide": "PreviousSlide", "next-slide": "NextSlide", "previous-item": "PreviousServiceItem", "next-item": "NextServiceItem", "on-air": "GoOnAir", "off-air": "GoOffAir"}
+    if action not in commands:
+        raise HTTPException(400, "Unknown Proclaim command")
+    settings = require_proclaim_widget_control(request, payload.dashboard_slug, payload.widget_id)
+    client = ProclaimClient(settings)
+    try:
+        await client.command(commands[action])
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Could not control Proclaim: {exc}") from exc
+    finally:
+        await client.close()
+    return {"ok": True, "action": action}
+
+
+@app.post("/api/integrations/proclaim/trigger")
+async def proclaim_trigger(payload: ProclaimCommandRequest, request: Request) -> dict:
+    settings = require_proclaim_widget_control(request, payload.dashboard_slug, payload.widget_id)
+    if payload.item_index is None or payload.item_index < 0 or payload.slide_index is None or payload.slide_index < 0:
+        raise HTTPException(400, "Choose a valid Proclaim service item and slide")
+    client = ProclaimClient(settings)
+    try:
+        status = await client.status()
+        current = status.get("current") or {}
+        current_item = int(current.get("item_index") if current.get("item_index") is not None else -1)
+        if current_item < 0:
+            raise ValueError("Proclaim did not report its current service item")
+        item_difference = payload.item_index - current_item
+        item_command = "NextServiceItem" if item_difference > 0 else "PreviousServiceItem"
+        for _ in range(abs(item_difference)):
+            await client.command(item_command)
+        current_slide = int(current.get("slide_index") or 0) if item_difference == 0 else 0
+        slide_difference = payload.slide_index - current_slide
+        slide_command = "NextSlide" if slide_difference > 0 else "PreviousSlide"
+        for _ in range(abs(slide_difference)):
+            await client.command(slide_command)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Could not control Proclaim: {exc}") from exc
+    finally:
+        await client.close()
+    return {"ok": True, "item_index": payload.item_index, "slide_index": payload.slide_index}
 
 
 @app.get("/api/integrations/propresenter/thumbnail/{presentation_uuid}/{index}")

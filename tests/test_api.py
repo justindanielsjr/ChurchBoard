@@ -103,6 +103,21 @@ class ApiTests(unittest.TestCase):
         self.assertIn("<svg", mark.text)
         self.assertTrue(self.client.get("/api/app-info").json()["instance_id"])
 
+    def test_create_and_duplicate_boards_from_desktop(self):
+        desktop = self.client.get("/desktop")
+        self.assertIn('id="create-board"', desktop.text)
+        script = self.client.get("/static/desktop.js").text
+        self.assertIn("data-duplicate-board", script)
+        created = self.client.post("/api/dashboards", json={"id": "new-board", "name": "New Board", "slug": "new-board", "widgets": []})
+        self.assertEqual(created.status_code, 201)
+        duplicate = self.client.post("/api/dashboards/new-board/duplicate")
+        self.assertEqual(duplicate.status_code, 201)
+        self.assertEqual(duplicate.json()["name"], "New Board Copy")
+        self.assertEqual(duplicate.json()["slug"], "new-board-copy")
+        second = self.client.post("/api/dashboards/new-board/duplicate")
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(second.json()["slug"], "new-board-copy-2")
+
     def test_module_manager_and_dependency_lifecycle(self):
         page = self.client.get("/modules")
         self.assertEqual(page.status_code, 200)

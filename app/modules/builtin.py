@@ -66,6 +66,24 @@ BUILTIN_MODULES = [
         "configuration_path": "/modules#services-live-bridge", "frontend": {},
     },
     {
+        "id": "proclaim", "name": "Faithlife Proclaim", "vendor": "Faithlife", "version": "1.1.0",
+        "description": "On-air status, slide and service-item control, Planning Center service flow, text views, and optional rendered NDI previews.", "category": "Presentation",
+        "settings_key": "proclaim", "dependencies": [], "provides": ["churchboard.presentation-control/v1"], "consumes": ["churchboard.service-plan/v1?", "churchboard.ndi/v1?"],
+        "widgets": [
+            widget("proclaim_slides", "Proclaim slides", "Proclaim", 6, 4, preview_mode="ndi", show_current=True, show_next=True),
+            widget("proclaim_playlist", "Proclaim playlist", "Proclaim", 7, 7, allow_remote_trigger=True, density="comfortable", auto_scroll=True, active_border_color="#f5c400"),
+            widget("proclaim_controls", "Proclaim controls", "Proclaim", 5, 3, allow_remote_trigger=True),
+            widget("proclaim_timers", "Proclaim timers", "Proclaim", 5, 3),
+        ],
+        "pages": [],
+        "setup": [
+            {"title": "Enable Proclaim's local server", "text": "In Proclaim, open Settings → Remote, enable the local server, and set a password when ChurchBoard is on another computer."},
+            {"title": "Import the Planning Center plan", "text": "Use Proclaim's Planning Center import so its service order matches the active ChurchBoard plan."},
+            {"title": "Optional rendered preview", "text": "Enable a Proclaim NDI output and select its source here for an accurate still/video view."},
+        ],
+        "configuration_path": "/modules#proclaim", "documentation": "/docs/PROCLAIM.md", "frontend": {"renderer": "legacy-adapter"},
+    },
+    {
         "id": "mics", "name": "Mics", "vendor": "ChurchBoard", "version": "3.0.0",
         "description": "Shure and Sennheiser wireless receiver status, battery, RF, audio, mute, and position mapping.", "category": "Wireless audio",
         "settings_keys": ["mics", "shure", "sennheiser"], "dependencies": [], "provides": ["churchboard.microphones/v1"], "consumes": ["churchboard.people/v1?"], "widgets": [], "pages": [],

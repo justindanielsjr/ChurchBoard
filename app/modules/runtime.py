@@ -21,6 +21,7 @@ from app.modules.planning_center import (
     service_items,
 )
 from app.modules.propresenter import ProPresenterClient
+from app.modules.proclaim import ProclaimClient
 from app.modules.shure import ShureClient
 from app.modules.sennheiser import SennheiserClient
 from app.modules.spl_reports import SPLReportStore
@@ -44,7 +45,7 @@ class RuntimeService:
         self.state: dict[str, Any] = self.demo_state()
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
-        self._last_refresh = {"planning_center": 0.0, "planning_center_detail": 0.0, "planning_center_live": 0.0, "propresenter": 0.0, "shure": 0.0, "sennheiser": 0.0, "prodmesh_host": 0.0, "prodmesh_rta": 0.0, "behringer": 0.0, "restream": 0.0, "obs": 0.0, "streams": 0.0}
+        self._last_refresh = {"planning_center": 0.0, "planning_center_detail": 0.0, "planning_center_live": 0.0, "propresenter": 0.0, "proclaim": 0.0, "shure": 0.0, "sennheiser": 0.0, "prodmesh_host": 0.0, "prodmesh_rta": 0.0, "behringer": 0.0, "restream": 0.0, "obs": 0.0, "streams": 0.0}
         self._service_control: dict[str, Any] = {"active": False}
         self._pp_live_candidate = ""
         self._pp_live_candidate_since = 0.0
@@ -53,6 +54,9 @@ class RuntimeService:
         self._rehearsal_clock: dict[str, Any] = {}
         self._propresenter_client: ProPresenterClient | None = None
         self._propresenter_key: tuple[Any, ...] | None = None
+        self._proclaim_client: ProclaimClient | None = None
+        self._proclaim_key: tuple[Any, ...] | None = None
+        self._proclaim_timing: dict[str, Any] = {}
         self._planning_center_detail_task: asyncio.Task | None = None
         self._osm_listener = OSMListener(self.record_osm_measurement)
         self._osm_sources: dict[str, dict[str, Any]] = {}
@@ -365,6 +369,41 @@ class RuntimeService:
         # Publish slide changes before slower cloud integrations finish so a
         # Planning Center refresh cannot hold up the local ProPresenter view.
         self.state = deepcopy(next_state)
+        proclaim_settings = config.get("proclaim", {})
+        proclaim_key = (bool(proclaim_settings.get("enabled")), str(proclaim_settings.get("host") or ""), int(proclaim_settings.get("port") or 52195), str(proclaim_settings.get("password") or ""))
+        if self._proclaim_client is None or proclaim_key != self._proclaim_key:
+            if self._proclaim_client is not None:
+                await self._proclaim_client.close()
+            self._proclaim_client, self._proclaim_key = ProclaimClient(proclaim_settings), proclaim_key
+        proclaim_interval = max(.08, min(float(proclaim_settings.get("refresh_seconds") or .12), .15))
+        proclaim_due = clock - self._last_refresh["proclaim"] >= proclaim_interval
+        if self._proclaim_client.configured and (force or proclaim_due):
+            self._last_refresh["proclaim"] = clock
+            try:
+                status = await self._proclaim_client.status()
+                status["ndi_source_name"] = str(proclaim_settings.get("ndi_source_name") or "")
+                # Proclaim's on-air session is authoritative. Do not replace
+                # it with Planning Center timing: an operator may select an
+                # item or slide directly inside Proclaim.
+                if status.get("on_air") and (status.get("current") or {}).get("title"):
+                    target = self._match_presentation_item(
+                        str(status["current"].get("title") or ""),
+                        (next_state.get("service") or {}).get("items") or [],
+                        str(((next_state.get("timing") or {}).get("current_item") or {}).get("id") or ""),
+                        {"songs_only": False},
+                        service_item_title=str(status["current"].get("title") or ""),
+                        service_item_index=status["current"].get("item_index"),
+                        service_item_index_is_absolute=True,
+                        is_pco_item=True,
+                    )
+                    if target:
+                        status["current"]["planning_center_item_id"] = target.get("id")
+                        status["current"]["planning_center_item_title"] = target.get("title")
+                        if str(live_config.get("source") or "propresenter") == "proclaim":
+                            self._apply_proclaim_target(next_state, target, status)
+                next_state["proclaim"] = status
+            except Exception as exc:
+                next_state["proclaim"] = {"connected": False, "on_air": False, "error": str(exc), "current": {}, "next": {}, "ndi_source_name": str(proclaim_settings.get("ndi_source_name") or "")}
         pc = PlanningCenterClient(config.get("planning_center", {}))
         if self._planning_center_detail_task is not None and self._planning_center_detail_task.done():
             try:
@@ -439,7 +478,8 @@ class RuntimeService:
         if live_config.get("enabled"):
             await self._sync_propresenter_live(next_state, pc, live_config, clock, force)
         else:
-            next_state["planning_center_live"] = {"enabled": False, "state": "disabled", "message": "ProPresenter is not controlling Services LIVE"}
+            source_label = "Proclaim" if str(live_config.get("source") or "propresenter") == "proclaim" else "ProPresenter"
+            next_state["planning_center_live"] = {"enabled": False, "state": "disabled", "message": f"{source_label} is not controlling Services LIVE"}
             self._pp_live_candidate = ""
             self._pp_live_handled = ""
             self._last_live = None
@@ -518,8 +558,24 @@ class RuntimeService:
         return self.state
 
     async def _sync_propresenter_live(self, state: dict[str, Any], pc: PlanningCenterClient, settings: dict[str, Any], clock: float, force: bool = False) -> None:
-        service, presentation = state.get("service") or {}, state.get("propresenter") or {}
-        base_status = {"enabled": True, "state": "waiting", "message": "Waiting for an active Planning Center service and ProPresenter presentation"}
+        service = state.get("service") or {}
+        source = str(settings.get("source") or "propresenter")
+        source_label = "Proclaim" if source == "proclaim" else "ProPresenter"
+        if source == "proclaim":
+            proclaim = state.get("proclaim") or {}
+            current = proclaim.get("current") or {}
+            presentation = {
+                "connected": bool(proclaim.get("connected") and proclaim.get("on_air")),
+                "title": current.get("title") or "",
+                "service_item_title": current.get("title") or "",
+                "service_item_index": current.get("item_index"),
+                "service_item_index_is_absolute": True,
+                "service_item_is_pco": True,
+                "presentation_uuid": proclaim.get("presentation_id") or "",
+            }
+        else:
+            presentation = state.get("propresenter") or {}
+        base_status = {"enabled": True, "source": source, "state": "waiting", "message": f"Waiting for an active Planning Center service and {source_label} presentation"}
         if not pc.configured:
             state["planning_center_live"] = {**base_status, "state": "error", "message": "Planning Center is not connected"}
             return
@@ -553,7 +609,7 @@ class RuntimeService:
         is_pco_item = bool(presentation.get("service_item_is_pco"))
         match_title = service_item_title if is_pco_item and service_item_title else title
         if not presentation.get("connected") or not match_title:
-            state["planning_center_live"] = {**base_status, "message": "Waiting for an active ProPresenter presentation"}
+            state["planning_center_live"] = {**base_status, "message": f"Waiting for an active {source_label} presentation"}
             return
         current_item_id = str((live or {}).get("current_item_id") or ((state.get("timing") or {}).get("current_item") or {}).get("id") or "")
         target = self._match_presentation_item(title, service.get("items") or [], current_item_id, settings, service_item_title=service_item_title, service_item_index=service_item_index, service_item_index_is_absolute=service_item_index_is_absolute, is_pco_item=is_pco_item)
@@ -572,7 +628,7 @@ class RuntimeService:
             return
         already_handled = signature == self._pp_live_handled
         if already_handled and str((live or {}).get("current_item_id") or "") == str((target or {}).get("id") or ""):
-            state["planning_center_live"] = {**self._live_status_payload(live), "state": "synced", "presentation_title": title, "service_item_title": service_item_title, "target_item_id": target.get("id"), "target_item_title": target.get("title"), "message": f"Following {target.get('title')} from ProPresenter"}
+            state["planning_center_live"] = {**self._live_status_payload(live), "source": source, "state": "synced", "presentation_title": title, "service_item_title": service_item_title, "target_item_id": target.get("id"), "target_item_title": target.get("title"), "message": f"Following {target.get('title')} from {source_label}"}
             return
         if not target:
             self._pp_live_handled = signature
@@ -621,8 +677,8 @@ class RuntimeService:
             self._remember_live(service, live)
             self._apply_live_timing(state, live)
             self._pp_live_handled = signature
-            source = "Planning Center playlist" if is_pco_item and service_item_title else "presentation title"
-            state["planning_center_live"] = {**self._live_status_payload(live), "state": "synced", "presentation_title": title, "service_item_title": service_item_title, "match_source": source, "target_item_id": target.get("id"), "target_item_title": target.get("title"), "message": f"Matched {target.get('title')} from the {source}"}
+            match_source = "Planning Center playlist" if is_pco_item and service_item_title else "presentation title"
+            state["planning_center_live"] = {**self._live_status_payload(live), "source": source, "state": "synced", "presentation_title": title, "service_item_title": service_item_title, "match_source": match_source, "target_item_id": target.get("id"), "target_item_title": target.get("title"), "message": f"Following {target.get('title')} from {source_label} ({match_source})"}
         except Exception as exc:
             # Let the same presentation retry after the stability delay. This
             # is important when an operator grants LIVE control after an error.
@@ -827,6 +883,22 @@ class RuntimeService:
         self._apply_live_timing(state, provisional_live)
         if (state.get("timing") or {}).get("rehearsal"):
             state["timing"]["source"] = "propresenter_rehearsal"
+
+    def _apply_proclaim_target(self, state: dict[str, Any], target: dict[str, Any], proclaim: dict[str, Any]) -> None:
+        """Move the local service pointer with Proclaim's actual on-air item."""
+        service_id, target_id = str((state.get("service") or {}).get("id") or ""), str(target.get("id") or "")
+        if not service_id or not target_id:
+            return
+        token = f"{service_id}|{target_id}"
+        if self._proclaim_timing.get("token") != token:
+            self._proclaim_timing = {"token": token, "started_at": datetime.now(timezone.utc).isoformat()}
+        self._apply_live_timing(state, {
+            "current_item_id": target_id,
+            "current_item_time_id": f"proclaim:{proclaim.get('presentation_id') or service_id}:{target_id}",
+            "current_live_start_at": self._proclaim_timing["started_at"],
+        })
+        if state.get("timing"):
+            state["timing"]["source"] = "proclaim"
 
     def _apply_live_timing(self, state: dict[str, Any], live: dict[str, Any]) -> None:
         service, current_id = state.get("service") or {}, str(live.get("current_item_id") or "")
