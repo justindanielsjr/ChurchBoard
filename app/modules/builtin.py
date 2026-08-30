@@ -11,7 +11,7 @@ BUILTIN_MODULES = [
         "description": "Dashboard pages, clocks, custom content, layouts, and the module host.", "category": "Core",
         "core": True, "default_installed": True, "dependencies": [],
         "provides": ["churchboard.pages/v2", "churchboard.module-host/v2"], "consumes": [],
-        "widgets": [widget("clock", "Clock", "Service & timing", 3, 2), widget("board_navigation", "Board navigation", "Content", 4, 2, links=[]), widget("text", "Custom text", "Content", 4, 2, text="Custom text")],
+        "widgets": [widget("clock", "Clock", "Service & timing", 3, 2), widget("board_navigation", "Board navigation", "Content", 4, 2, links=[]), widget("text", "Custom text", "Content", 4, 2, text="Custom text"), widget("rich_text", "Notes", "Content", 4, 3, html="<p>New note</p>")],
         "pages": [{"id": "boards", "name": "Boards", "path": "/desktop"}],
         "setup": [{"title": "Ready to use", "text": "This is the core page host and cannot be removed."}],
         "frontend": {"renderer": "legacy-adapter"},
