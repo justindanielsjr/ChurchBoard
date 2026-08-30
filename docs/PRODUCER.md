@@ -22,6 +22,14 @@ The owner chooses whether ChurchBoard accounts require passwords under **Produce
 
 If an administrator loses their credentials, open `/login` directly on the computer running ChurchBoard and choose **Lost administrator credentials?**. Enter the administrator email and a new password. Recovery is limited to loopback access and turns password sign-in back on.
 
+## Open Producer from a phone with a QR code
+
+Install **Producer QR Access** from Setup → Modules, then add the **Producer QR code** widget to any dashboard intended for volunteers or team onboarding. Installing it also enables the required Producer module. ChurchBoard generates the code locally and puts the full-color ChurchBoard icon in its center. The destination uses the ChurchBoard computer's reachable LAN IPv4 address, the configured HTTP or HTTPS scheme, and the separate Producer port when that listener is enabled. Port 80 for HTTP and port 443 for HTTPS are omitted because phones treat them as the standard ports.
+
+The phone must be connected to the same network as ChurchBoard. Scan the code with the phone's camera, then open the detected link. The widget also prints the complete URL below the code for devices that cannot scan it. If ChurchBoard cannot determine a reachable address, open the board through the computer's LAN address instead of `localhost`; the QR widget will then preserve that address.
+
+The QR code is generated entirely inside ChurchBoard. No URL or network information is sent to an external QR-code service. HTTPS certificates still need to be trusted by the phone, and the Producer sign-in rules remain unchanged.
+
 ## Campuses, users, and Planning Center positions
 
 An admin can create, edit, or delete campuses and users from **Producer → Team**. A campus represents a physical church location and scopes its users, checklists, and resources. A single-location church can keep only **Main Campus** and otherwise ignore this feature. Deleting a campus moves its assigned users and producer content to the first remaining campus.
@@ -68,7 +76,7 @@ The Personal Access Token user must be able to read Services Media and its tags.
 
 Use **Export layouts** from the desktop control page to back up all dashboards, or export the open layout from its editor. **Import layout** validates the file before storing it; a conflicting slug or name is preserved by assigning the imported dashboard a new one. Treat exports as configuration files and review operational details before sharing them.
 
-The editor palette groups widgets into Service & timing, Planning Center, ProPresenter, Audio & streaming, and Content. Search filters the list. Hover over the board controls and choose **Edit** to keep the current live board on screen while the editing palette slides in from the left. Click the always-visible **Edit** button in a widget's upper-right corner or right-click it to open settings in a modal. Drag a widget to move it, or drag its blue right edge, bottom edge, or corner to resize it. Saving closes the editor drawer and returns to the live board without opening another page.
+The editor palette groups widgets into Service & timing, Planning Center, ProPresenter, Proclaim, Producer, Audio & streaming, and Content. Search filters the list. Hover over the board controls and choose **Edit** to keep the current live board on screen while the editing palette slides in from the left. Click the always-visible **Edit** button in a widget's upper-right corner or right-click it to open settings in a modal. Drag a widget to move it, or drag its blue right edge, bottom edge, or corner to resize it. Saving closes the editor drawer and returns to the live board without opening another page.
 
 Every displayed board has an **Edit** button beside the fullscreen and menu controls; on pointer-based computers these controls stay out of the way until that corner is hovered. The **Board navigation** widget adds touch-friendly links directly inside a layout. Its settings let you select only the destination boards that belong on that operator page, arrange them, and replace their displayed labels without renaming the boards themselves.
 

@@ -138,7 +138,7 @@ function objectId(value){if(!value||typeof value!=="object")return String(value)
 function leaderMicKey(mics){return(mics||[]).map(mic=>[mic.id,mic.name,mic.receiver,mic.assignment?.person_id,mic.assignment?.id,mic.assignment?.name,mic.assignment?.position_key])}
 function widgetStateKey(widget,state){
   const timing=state.timing||{},service=state.service||{},pp=state.propresenter||{},settings=widget.settings||{};
-  if(widget.type==="clock"||widget.type==="spl"||widget.type==="text")return`${widget.type}:static`;
+  if(widget.type==="clock"||widget.type==="spl"||widget.type==="text"||widget.type==="producer_qr")return`${widget.type}:static`;
   if(widget.type==="board_navigation")return`board-navigation:${JSON.stringify(settings.links||[])}`;
   if(widget.type==="service")return`service:${objectId(service)}:${timing.source||""}:${timing.state||""}`;
   if(widget.type==="timing")return`timing:${String(timing.current_item?.id||"")}:${timing.rehearsal===true}`;

@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import ipaddress
 import asyncio
+import io
 import json
 import re
 import secrets
+import socket
 import threading
 from pathlib import Path
 from uuid import uuid4
@@ -17,6 +19,8 @@ from zoneinfo import available_timezones
 import uvicorn
 import httpx
 import websockets
+import qrcode
+from PIL import Image, ImageDraw
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -195,6 +199,47 @@ class ProducerPortalApp:
 
 
 producer_portal_app = ProducerPortalApp(app)
+
+
+def _producer_lan_address(request: Request) -> str:
+    requested = str(request.url.hostname or "").strip()
+    try:
+        if requested and not ipaddress.ip_address(requested).is_loopback:
+            return requested
+    except ValueError:
+        if requested.casefold() not in {"localhost", "testserver"}:
+            return requested
+    candidates: list[str] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))
+            candidates.append(str(probe.getsockname()[0]))
+    except OSError:
+        pass
+    try:
+        candidates.extend(str(row[4][0]) for row in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET))
+    except OSError:
+        pass
+    for candidate in candidates:
+        try:
+            address = ipaddress.ip_address(candidate)
+            if not address.is_loopback and not address.is_link_local and not address.is_unspecified:
+                return candidate
+        except ValueError:
+            continue
+    return requested if requested and requested != "testserver" else "127.0.0.1"
+
+
+def _producer_url(request: Request) -> str:
+    server = store_from(request).load().get("settings", {}).get("server", {})
+    scheme = "https" if server.get("https_enabled") else str(request.url.scheme or "http")
+    separate = server.get("producer_port_enabled", True)
+    port = int(server.get("producer_port") or 80) if separate else int(server.get("port") or 8040)
+    host = _producer_lan_address(request)
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    authority = host if (scheme == "http" and port == 80) or (scheme == "https" and port == 443) else f"{host}:{port}"
+    return f"{scheme}://{authority}/producer"
 
 
 @app.websocket("/rtc")
@@ -1509,6 +1554,37 @@ async def get_app_info(request: Request) -> dict:
         "macos_launchservices": bool(getattr(request.app.state, "macos_launchservices", False)),
         "producer_portal": bool(getattr(request.state, "portal_only", False)),
     }
+
+
+@app.get("/api/producer/qr-info")
+async def producer_qr_info(request: Request) -> dict:
+    return {"url": _producer_url(request)}
+
+
+@app.get("/api/producer/qr-code")
+async def producer_qr_code(request: Request) -> Response:
+    destination = _producer_url(request)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=14,
+        border=4,
+    )
+    qr.add_data(destination)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="#07131c", back_color="#ffffff").convert("RGBA")
+    icon = Image.open(ROOT_DIR / "app" / "static" / "churchboard-icon.png").convert("RGBA")
+    icon_size = max(48, int(image.width * 0.19))
+    icon.thumbnail((icon_size, icon_size), Image.Resampling.LANCZOS)
+    pad = max(8, icon_size // 12)
+    plate_size = max(icon.width, icon.height) + pad * 2
+    plate = Image.new("RGBA", (plate_size, plate_size), (0, 0, 0, 0))
+    ImageDraw.Draw(plate).rounded_rectangle((0, 0, plate_size - 1, plate_size - 1), radius=plate_size // 5, fill="white")
+    plate.alpha_composite(icon, ((plate_size - icon.width) // 2, (plate_size - icon.height) // 2))
+    image.alpha_composite(plate, ((image.width - plate_size) // 2, (image.height - plate_size) // 2))
+    output = io.BytesIO()
+    image.convert("RGB").save(output, format="PNG", optimize=True)
+    return Response(output.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store", "X-ChurchBoard-Producer-URL": destination})
 
 
 def require_local_desktop(request: Request) -> None:

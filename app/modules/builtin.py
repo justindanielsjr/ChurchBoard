@@ -182,6 +182,14 @@ BUILTIN_MODULES = [
         "configuration_path": "/producer", "documentation": "/docs/PRODUCER.md", "frontend": {},
     },
     {
+        "id": "producer-qr", "name": "Producer QR Access", "vendor": "ChurchBoard", "version": "1.0.0",
+        "description": "A scannable LAN link that opens the restricted Producer workspace on a phone or tablet.", "category": "Producer",
+        "dependencies": ["producer"], "provides": ["churchboard.producer-qr/v1"], "consumes": ["churchboard.producer/v1"],
+        "widgets": [widget("producer_qr", "Producer QR code", "Producer", 4, 4)], "pages": [],
+        "setup": [{"title": "Use the same network", "text": "Connect the phone and ChurchBoard computer to the same trusted network, then add the Producer QR code widget to a board."}],
+        "configuration_path": "/modules#producer-qr", "documentation": "/docs/PRODUCER.md", "frontend": {"renderer": "legacy-adapter"},
+    },
+    {
         "id": "producer-intercom", "name": "Producer Intercom", "vendor": "ChurchBoard / LiveKit", "version": "2.0.0",
         "description": "ChurchBoard-hosted WebRTC party lines with listening, push-to-talk, latch-open microphones, and administrator mute-all.", "category": "Producer",
         "settings_key": "intercom", "dependencies": ["producer"], "provides": ["churchboard.intercom/v1"], "consumes": ["churchboard.identity/v1"],

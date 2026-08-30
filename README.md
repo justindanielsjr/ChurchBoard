@@ -46,6 +46,7 @@ See ChurchBoard in action and follow the setup walkthrough in the **[ChurchBoard
 - A scrollable, resizable sermon-notes widget that selects a named note field from a Planning Center service item
 - A dedicated ProPresenter control pad for previous/next slide and previous/next playlist item
 - A mobile-friendly Producer workspace for position checklists, Planning Center tagged media, embedded resources, files, links, team access, campuses, and an activity trail
+- A Producer QR-code widget that uses ChurchBoard's current LAN address and volunteer-workspace port, with the color ChurchBoard icon embedded for quick phone access
 - Personal in-ear monitor mixes in Producer, with touch-friendly faders, live console readback, per-channel On controls, remembered channel order, and reusable volunteer settings
 - Automatic or manual Planning Center service-time selection, including a different scheduled person in the same position at different services
 - Optional NDI® source discovery and video widgets that dynamically load the licensed NDI runtime without requiring NDI Tools
@@ -62,26 +63,23 @@ Choose your computer and click its download link:
 
 | Your computer | Download |
 | --- | --- |
-| **Windows 10 or 11** | **[Download the Windows installer (.exe)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Windows-x64-Setup.exe)** |
-| **Mac with Apple silicon** — M1 or newer | **[Download the Apple silicon Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-macOS-arm64.dmg)** |
-| **Mac with an Intel processor** | **[Download the Intel Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-macOS-x86_64.dmg)** |
-| **Ubuntu or Debian Linux** | **[Download the Linux installer (.deb)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Linux-amd64.deb)** |
-| **Other 64-bit desktop Linux** | **[Download the portable Linux package (.tar.gz)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.8-Linux-x86_64.tar.gz)** |
+| **Windows 10 or 11** | **[Download the Windows installer (.exe)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.9-Windows-x64-Setup.exe)** |
+| **Mac with Apple silicon** — M1 or newer | **[Download the Apple silicon Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.9-macOS-arm64.dmg)** |
+| **Mac with an Intel processor** | **[Download the Intel Mac disk image (.dmg)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.9-macOS-x86_64.dmg)** |
+| **Ubuntu or Debian Linux** | **[Download the Linux installer (.deb)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.9-Linux-amd64.deb)** |
+| **Other 64-bit desktop Linux** | **[Download the portable Linux package (.tar.gz)](https://github.com/wtapper89/ChurchBoard/releases/latest/download/ChurchBoard-2.0.9-Linux-x86_64.tar.gz)** |
 
 Not sure which Mac you have? Choose **Apple menu → About This Mac**. If it says **Chip**, use Apple silicon. If it says **Processor**, use Intel.
 
 **Raspberry Pi:** jump to the [one-command Raspberry Pi installer](#raspberry-pi).
 
-[View all v2.0.8 downloads and release notes](https://github.com/wtapper89/ChurchBoard/releases/tag/v2.0.8)
+[View all v2.0.9 downloads and release notes](https://github.com/wtapper89/ChurchBoard/releases/tag/v2.0.9)
 
-### What's new in 2.0.8
+### What's new in 2.0.9
 
-- Adds Faithlife Proclaim as a presentation source with current/next slide text, NDI output, and operator controls.
-- Adds interactive, auto-scrolling Proclaim playlist and Proclaim timer widgets.
-- Lets Proclaim drive the Planning Center order, Services LIVE position, and ChurchBoard timing.
-- Matches imported plans by exact service-item position so repeated titles do not select the wrong item.
-- Restores board creation and adds board duplication from the desktop control page.
-- Improves name-only photo cards with a responsive liquid-glass treatment.
+- Adds an optional Producer QR Access module for opening the restricted Producer workspace from a phone on the same network.
+- Builds the current LAN address and Producer port directly into the QR code without using an external QR service.
+- Places the full-color ChurchBoard icon in the center of the code and responsively scales the complete QR layout inside its widget.
 
 ## Install
 

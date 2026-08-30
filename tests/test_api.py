@@ -4,10 +4,12 @@ import os
 import json
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.main import app
 from app.modules.osm import parse_osm_packet
@@ -117,6 +119,24 @@ class ApiTests(unittest.TestCase):
         second = self.client.post("/api/dashboards/new-board/duplicate")
         self.assertEqual(second.status_code, 201)
         self.assertEqual(second.json()["slug"], "new-board-copy-2")
+
+    def test_producer_qr_widget_uses_lan_address_and_producer_port(self):
+        modules = self.client.get("/api/modules/frontend").json()["modules"]
+        producer_qr = next(item for item in modules if item["id"] == "producer-qr")
+        self.assertFalse(producer_qr["installed"])
+        self.assertIn("producer_qr", {widget["type"] for widget in producer_qr["widgets"]})
+        installed = self.client.post("/api/modules/producer-qr/install").json()["items"]
+        self.assertTrue(next(item for item in installed if item["id"] == "producer-qr")["installed"])
+        with patch("app.main._producer_lan_address", return_value="10.46.161.42"):
+            info = self.client.get("/api/producer/qr-info")
+            code = self.client.get("/api/producer/qr-code")
+        self.assertEqual(info.json()["url"], "http://10.46.161.42/producer")
+        self.assertEqual(code.headers["x-churchboard-producer-url"], info.json()["url"])
+        self.assertEqual(code.headers["content-type"], "image/png")
+        image = Image.open(BytesIO(code.content))
+        self.assertEqual(image.format, "PNG")
+        self.assertEqual(image.width, image.height)
+        self.assertGreater(image.width, 300)
 
     def test_module_manager_and_dependency_lifecycle(self):
         page = self.client.get("/modules")
