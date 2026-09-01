@@ -274,6 +274,26 @@ or (b) a standalone 12-tile bay-grid readiness widget (simpler, no correlation).
 SBC240 exposes per-bay battery over the command-strings port (TCP 2202) and not only via WWB's discovery
 layer. Priority: after Phase 5.
 
+### Later, no urgency — dedicated Mac display viewer
+The deployment is **one always-on Mac** feeding an Ultrix router (→ any auditorium display). Chrome develops a
+memory leak over long sessions and stops rendering until relaunched. The web app itself is fine; this is only
+about a more stable window to view `/display/<slug>` through. Options, cheapest first:
+1. **Scheduled `location.reload()`** in `display.js` (every few hours or a fixed early-morning time), or a
+   `launchd` job that relaunches the browser nightly. ~5 lines. Helps regardless of browser. Note: Chrome's
+   leak is often GPU/compositor memory that survives a page reload, so this may not be enough on its own.
+2. **Switch Chrome → Safari** + the scheduled reload. WebKit's footprint is lighter and signage Macs commonly
+   run Safari for this. Likely reduces but won't eliminate the problem; Safari's kiosk lockdown is weak (no
+   true `--kiosk`, cmd-W / URL bar / password prompts, aggressive timer throttling if the window is ever
+   occluded). Probably good enough for a display nobody touches.
+3. **Tiny WKWebView kiosk app** (~100 lines Swift, ~a weekend): bare fullscreen window at a configurable URL,
+   prevents display sleep, auto-reconnect with backoff, and a **watchdog** that reloads if the page's poll
+   timestamp stops advancing for a few minutes (the thing that saves a live service). No Apple Developer cert
+   needed for local use. Near-zero maintenance — it just loads a URL. Rendering is current WebKit, very close
+   to Chrome (the display CSS already `-webkit-` prefixes `backdrop-filter`) but wants one visual check.
+   Mac-only, one client by design; a second non-Mac display goes back to a browser.
+Recommended order: do (1)+(2) after the Phases 2–5 merge; build (3) only if Safari also degrades or the lack of
+lockdown bites. Would be "Phase 6".
+
 ## Working style notes
 - Patches/diffs against upstream drift fast (upstream ChurchBoard is actively developed) — if working from a fresh
   clone or pulling upstream changes, expect to re-verify insertion points in `common.js`/`editor.js` rather than
