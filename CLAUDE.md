@@ -201,11 +201,49 @@ rf: None, frequency, muted, rf_power, audio, online}`. Helpers `psm_rf_muted` (R
 4. Box-level replies (no channel index, e.g. `DEVICE_NAME`) don't match `FRAME`; not relied on.
 - Tests: `test_core.py` `PSM1000Tests` + `PSM1000StatusTests` (fake-socket fan-out, stereo + L/R pair). Suite 210.
 
-### Phase 5 — Custom stage plot widget — not started
-No existing analog in the codebase (closest is the mic/pack card list, which isn't spatial). Two-part build: (1) an
-editor mode to place mic/monitor/DI icons on a stage outline and save x/y positions, (2) a display mode rendering
-those positions with live status overlays using whatever channel data Phases 3–4 produce. Deliberately last — most
-novel UI work, most valuable once real assignment/channel data already exists to show.
+### Phase 5 — `stage_plot` widget — design locked (2026-09-01), not started
+**Purpose:** musicians finding their spot on stage. Readability first; NOT a live-telemetry surface (that lives
+in the mics widget). New widget type `stage_plot`.
+
+**Roster = `filteredPeople(widget.settings, state)`** (the People-widget resolver, in `common.js`), NOT
+`assignmentEntries` — because the plot must show a filtered person even if they have no wireless mic, and
+`assignmentEntries`'s `peopleByKey` map is last-write-wins so it drops the 2nd person on a shared position.
+`filteredPeople` dedupes by identity and returns both people on a shared position. Mic/pack name per person is
+looked up from `state.mics` by the same fallback chain `itemLeaderDetails` uses (person_id → name →
+position_key).
+
+**Settings:**
+- Assignments-widget filter block reused verbatim: `team_ids`, `position_keys`, `position_labels`, manual-people
+  selection.
+- `background_image` — optional `data:image/` URI (~4 MB UI cap) + `background_aspect` (computed on upload so
+  the display letterboxes without waiting for image load). No image → plain 2:1 rectangle.
+- `placements` — `{ "<key>": {x, y} }`, x/y as 0–1 fractions of the letterboxed plot area. **Option B keying:**
+  `key` is a PCO **position key** (`band::electric-guitar`) for the normal 1-person-per-position case — fully
+  service-stable, Jesse inherits Ben's spot. `key` is `"p:<personId>"` for a **per-person override**, used when
+  a position has 2+ people (e.g. two "Melody" singers) and one needs their own spot. Resolution per person:
+  `placements["p:"+id]` → else `placements[positionKey]` → else the **parking strip**. Multiple people sharing a
+  position anchor with no override **fan out** deterministically (sort by id, offset x by `(i-(n-1)/2)*spread`).
+- `show_rf` — default off; on adds a small battery/RF chip to each marker.
+- Unfilled positions are **hidden** (skip `placeholder`/no-person slots).
+
+**Display:** letterboxed background (image or plain rect) centred in the widget, markers `position:absolute` at
+`left:x% top:y%` of the plot box. Marker = circular PCO photo, or an auto-coloured initials disc when no photo
+(mirrors `fullNamePlaceholderMarkup`), + name + mic/pack name, stage-readable sizes. Unplaced people flow into a
+parking strip along the bottom edge, styled "needs a spot".
+
+**Placement editor (in the widget settings panel, not on the grid):** letterboxed background at editor size,
+one draggable puck per resolved person. Drag a solo-position puck → writes `placements[positionKey]`; drag a
+puck off a shared anchor → detaches it to `placements["p:"+id]`; drag off-canvas → removes the placement (back
+to parking / fan-out). Parking row beneath; drag a puck up onto the canvas to place it. No auto-prune of stale
+keys (a returning person keeps their spot); a "Clear all placements" button for a reset.
+
+**Increments (branch `phase-5-stage-plot`, stack on `phase-4-psm1000`):**
+- **5a** — manifest in `app/modules/builtin.py` (the entry that gets missed — see ground rules) + frontend
+  palette/`defaults` + display renders the filtered roster as markers on a plain letterboxed rect, all parked.
+  Verify it appears in the palette and honours the team/position filters.
+- **5b** — background image upload + `background_aspect`; display letterboxes it behind the markers.
+- **5c** — the drag placement editor; Option B `placements` written/read.
+- **5d** — marker readability styling, `show_rf` chip, parking-strip polish.
 
 ### Later, no urgency — ProdCom transcript module
 Deferred by choice, not blocked by anything above. If/when revisited: MXU's "ProdCom integration" almost certainly
