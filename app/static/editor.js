@@ -77,7 +77,32 @@ function select(id){
   if(widget.type==="order")renderOrderNoteChoices(widget)
   if(widget.type==="board_navigation")renderBoardLinkEditor(widget)
   if(widget.type==="pp_macros")renderMacroPicker(widget)
+  if(widget.type==="stage_plot")renderStagePlotEditor(widget)
 }
+function renderStagePlotEditor(widget){
+  const root=document.querySelector("#stage-plot-placement");
+  if(!root)return;
+  const bg=widget.settings.background_image||"",aspect=Number(widget.settings.background_aspect)>0?Number(widget.settings.background_aspect):2;
+  root.innerHTML=`<div class="sp-editor"><div class="sp-editor-canvas" style="--sp-aspect:${aspect}">${bg?`<img class="sp-bg" src="${escapeHtml(bg)}" alt="">`:'<span class="sp-editor-empty">No background image</span>'}</div><div class="sp-editor-actions"><label class="button secondary sp-upload">${bg?"Replace image":"Upload background image"}<input type="file" data-stage-plot-bg accept="image/png,image/jpeg,image/webp"></label>${bg?'<button type="button" class="button secondary" data-stage-plot-bg-remove>Remove image</button>':""}</div><p class="hint">A stage photo or diagram. Markers sit relative to this image; it is letterboxed to keep its shape.</p></div>`;
+}
+document.querySelector("#stage-plot-placement").addEventListener("change",async event=>{
+  if(!event.target.matches("[data-stage-plot-bg]"))return;
+  const widget=find(selected),file=event.target.files?.[0];
+  if(!widget||!file)return;
+  if(file.size>4*1024*1024){document.querySelector("#save-status").textContent="Background images must be 4 MB or smaller.";event.target.value="";return}
+  try{
+    const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||""));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file)});
+    const aspect=await new Promise(resolve=>{const img=new Image();img.onload=()=>resolve(img.naturalWidth&&img.naturalHeight?img.naturalWidth/img.naturalHeight:2);img.onerror=()=>resolve(2);img.src=dataUrl});
+    widget.settings.background_image=dataUrl;widget.settings.background_aspect=Math.max(.4,Math.min(6,aspect));
+    changed();renderStagePlotEditor(widget);render();
+  }catch(error){document.querySelector("#save-status").textContent="Could not read that image."}
+});
+document.querySelector("#stage-plot-placement").addEventListener("click",event=>{
+  if(!event.target.closest("[data-stage-plot-bg-remove]"))return;
+  const widget=find(selected);if(!widget)return;
+  widget.settings.background_image="";widget.settings.background_aspect=2;
+  changed();renderStagePlotEditor(widget);render();
+});
 function renderMixerStripEditor(widget){const root=document.querySelector("[data-mixer-strip-editor]");root.innerHTML=(widget.settings.strips||[]).map((strip,index)=>`<div class="mixer-editor-row" data-mixer-row="${index}"><label>Label<input data-mixer-field="label" value="${escapeHtml(strip.label||"")}" placeholder="Vocal 1"></label><label>Strip type<select data-mixer-field="kind"><option value="channel" ${strip.kind==="channel"?"selected":""}>Input channel</option><option value="send" ${strip.kind==="send"?"selected":""}>Channel → bus / aux</option><option value="aux" ${strip.kind==="aux"?"selected":""}>Aux input</option><option value="bus" ${strip.kind==="bus"?"selected":""}>Bus / aux mix</option><option value="dca" ${strip.kind==="dca"?"selected":""}>DCA</option><option value="main" ${strip.kind==="main"?"selected":""}>Main (1 LR · 2 Mono)</option></select></label><label>${strip.kind==="send"?"Input channel":"Number"}<input data-mixer-field="number" type="number" min="1" max="64" value="${Number(strip.number)||1}"></label><label ${strip.kind==="send"?"":"hidden"}>Target bus / aux<input data-mixer-field="target_bus" type="number" min="1" max="16" value="${Number(strip.target_bus)||1}"></label><button class="icon-button danger" type="button" data-delete-mixer-strip aria-label="Delete fader">×</button></div>`).join("")||'<div class="empty-row">No faders configured</div>'}
 function renderOrderNoteChoices(widget){const root=document.querySelector("#order-production-note-fields"),names=[...new Set((runtimeState.service?.items||runtimeState.timing?.service_items||[]).flatMap(item=>(item.note_fields||[]).map(field=>field.name)).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),selected=(widget.settings.production_note_fields||[]).length?widget.settings.production_note_fields:(widget.settings.production_note_field?[widget.settings.production_note_field]:[]),colors=widget.settings.production_note_colors||{},palette=["#7048a8","#087f8c","#b23a48","#a65f00","#237a57","#b64b18"];for(const name of selected)if(!names.includes(name))names.push(name);root.innerHTML=names.map((name,index)=>`<label class="order-note-field-choice"><input type="checkbox" data-order-note-field="${escapeHtml(name)}" ${selected.includes(name)?"checked":""}><span>${escapeHtml(name)}</span><input type="color" data-order-note-color="${escapeHtml(name)}" value="${escapeHtml(colors[name]||palette[index%palette.length])}" aria-label="Color for ${escapeHtml(name)}"></label>`).join("")||'<p class="hint">No note fields were found in this service.</p>';root.hidden=!form.elements.show_production_note.checked}
 document.querySelector("#order-production-note-fields").addEventListener("input",event=>{if(!event.target.matches("[data-order-note-field],[data-order-note-color]"))return;const widget=find(selected);if(!widget)return;const checked=[...document.querySelectorAll("[data-order-note-field]:checked")].map(input=>input.dataset.orderNoteField),colors={};document.querySelectorAll("[data-order-note-color]").forEach(input=>colors[input.dataset.orderNoteColor]=input.value);widget.settings.production_note_fields=checked;widget.settings.production_note_colors=colors;widget.settings.production_note_field=checked[0]||"";changed();render()});
