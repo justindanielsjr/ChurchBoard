@@ -133,13 +133,41 @@ window wants a rehearsal.
   + `ShureStatusTests.test_axient_receiver_reports_charge_percent_frequency_and_diversity` (full fake-socket
   parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
-### Phase 4 — Shure PSM1000 integration — not started
-Same command-string protocol family and TCP port as Axient (P10T transmitter is officially documented in the same
-GET/SET/REP/SAMPLE convention). Important asymmetry: the P10R bodypack the performer wears is receive-only — no RF
-path back to report its own battery level, unlike Axient beltpacks. So this integration gets person-to-pack
-*assignment* for free from the Phase 2 mapping, but there's no live pack battery/health telemetry to show, ever —
-that's a hardware limitation, not something to keep trying to solve. The P10T transmitter side (frequency, mute,
-audio level) does report and can be shown.
+### Phase 4 — Shure PSM1000 integration — 🔨 in progress on branch `phase-4-psm1000` (stacked on
+`phase-3-axient`). **4a done** (`PSM1000Client` + tests, validated against the live racks). 4b (settings + UI),
+4c (runtime merge into `state["mics"]`), 4d (assignment dropdown + card PACK line) still to do.
+
+The P10R bodypack the performer wears is receive-only — no RF path back — so person↔pack is purely the Phase 2
+`person_assignment_map` assignment; there is no pack battery/health telemetry, ever. The P10T rack side
+(frequency, RF mute, RF power, input audio meter) does report.
+
+**Hardware:** 3× P10T dual-transmitter rack units, Shure Control IPs `10.100.3.220` / `.221` / `.222`, reachable
+from the dev box on TCP 2202. Each rack = 2 transmitters (channel index 1/2), each transmitter = stereo RF. Their
+8 packs: `IEM **`/`IEM 1` on .220 (both stereo), `IEM 2`–`IEM 5` on .221 (both transmitters run "dual mono" —
+different mono mix on L vs R, packs panned to a side), `GTR 2`/`GTR 3` on .222 (stereo).
+
+**Config model** (`settings.iem_packs`, list — one row per physical pack): `{id, label, host, port?, transmitter
+(1|2), side ("stereo"|"left"|"right"), rack_name?}`. `label` is the sticker on the bodypack and is what shows in
+the assignment dropdown and on the card — the receiver's `CHAN_NAME` does NOT match (racks report `IEM 2/3`,
+`GUITAR 2`). A dual-mono transmitter gets two rows (side left / right, each showing its own `AUDIO_IN_LVL_L`/`_R`
+meter); a stereo transmitter gets one row (side stereo, showing the louder of L/R).
+
+**`PSM1000Client` (in `shure.py`, 4a):** groups `iem_packs` by host, one connection per rack, per transmitter
+GETs `CHAN_NAME`/`FREQUENCY`/`RF_MUTE`/`RF_TX_LVL` + `SET METER_RATE 00100`, parses `AUDIO_IN_LVL_L/_R` reports,
+emits one card per configured row via `psm_pack_card()` — `{name: label, pack: True, battery_percent: None,
+rf: None, frequency, muted, rf_power, audio, online}`. Helpers `psm_rf_muted` (RF_MUTE 1/0, zero-padded),
+`psm_rf_power` (→ "50 mW"), `psm_audio_percent`.
+
+**Protocol quirks learned from the real racks (not in Shure's published page):**
+1. A P10T only acts on a **CRLF-terminated** command and ignores run-on strings — unlike the QLX/Axient path,
+   which writes bare `< … >`. `PSM1000Client` appends `\r\n` to every write.
+2. `AUDIO_TX_MODE` reads `3` (stereo) on **every** transmitter including the dual-mono ones — it's not a mode
+   they set, so it's useless for validating `side`. Not queried.
+3. `AUDIO_IN_LVL_L/_R` full scale is **undocumented**; live values run ~0–1900. Working model:
+   `dBFS = value/50 − 50` (0–2500 → −50..0 dBFS), i.e. `PSM_AUDIO_FULL_SCALE = 2500`. **UNCONFIRMED** — retune
+   that one constant from the same Sunday rehearsal capture as the Axient meter windows.
+4. Box-level replies (no channel index, e.g. `DEVICE_NAME`) don't match `FRAME`; not relied on.
+- Tests: `test_core.py` `PSM1000Tests` + `PSM1000StatusTests` (fake-socket fan-out, stereo + L/R pair). Suite 210.
 
 ### Phase 5 — Custom stage plot widget — not started
 No existing analog in the codebase (closest is the mic/pack card list, which isn't spatial). Two-part build: (1) an

@@ -15,12 +15,16 @@ from app.modules.livekit import HostedIntercomServer, access_token
 from app.modules.ndi import NDIRuntime
 from app.modules.media_cache import PlanningCenterMediaCache
 from app.modules.shure import (
+    PSM1000Client,
     ShureClient,
     axient_antenna_label,
     battery_charge_percent,
     battery_percent,
     format_frequency,
     percent,
+    psm_pack_card,
+    psm_rf_muted,
+    psm_rf_power,
     transmitter_active,
 )
 from app.modules.sennheiser import parse_ssc_response, ssc_request
@@ -756,6 +760,102 @@ class ShureStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mic["antenna"], "Ant A+B")
         self.assertGreater(mic["rf"], 0)
         self.assertEqual(mic["errors"], [])
+
+
+class PSM1000Tests(unittest.TestCase):
+    def test_configured_requires_enabled_and_packs(self):
+        self.assertFalse(PSM1000Client({"iem_packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
+        self.assertFalse(PSM1000Client({"enabled": True, "iem_packs": []}).configured)
+        self.assertTrue(PSM1000Client({"enabled": True, "iem_packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
+
+    def test_racks_group_iem_packs_by_host(self):
+        client = PSM1000Client({"enabled": True, "iem_packs": [
+            {"label": "IEM 2", "host": "10.0.0.1", "transmitter": 1, "side": "left"},
+            {"label": "IEM 3", "host": "10.0.0.1", "transmitter": 1, "side": "right"},
+            {"label": "GTR 2", "host": "10.0.0.2", "transmitter": 1, "side": "stereo"},
+        ]})
+        racks = client._racks()
+        self.assertEqual(sorted(rack["host"] for rack in racks), ["10.0.0.1", "10.0.0.2"])
+        first = next(rack for rack in racks if rack["host"] == "10.0.0.1")
+        self.assertEqual([row["label"] for row in first["rows"]], ["IEM 2", "IEM 3"])
+
+    def test_pack_card_has_no_battery_and_picks_the_configured_side(self):
+        tx = {"frequency": "578.000 MHz", "rf_mute": False, "audio_l": 30, "audio_r": 70}
+        left = psm_pack_card({"label": "IEM 2", "host": "10.0.0.1", "transmitter": 1, "side": "left"}, tx)
+        right = psm_pack_card({"label": "IEM 3", "host": "10.0.0.1", "transmitter": 1, "side": "right"}, tx)
+        stereo = psm_pack_card({"label": "IEM", "host": "10.0.0.1", "transmitter": 1, "side": "stereo"}, tx)
+        self.assertEqual(left["name"], "IEM 2")
+        self.assertTrue(left["pack"])
+        self.assertIsNone(left["battery_percent"])
+        self.assertEqual(left["audio"], 30)
+        self.assertEqual(right["audio"], 70)
+        self.assertEqual(stereo["audio"], 70)
+        self.assertEqual(left["frequency"], "578.000 MHz")
+        self.assertFalse(left["muted"])
+
+    def test_pack_card_offline_when_rack_unreachable(self):
+        card = psm_pack_card({"label": "IEM", "host": "10.0.0.1", "transmitter": 1, "side": "stereo"}, {}, online=False, error="timed out")
+        self.assertFalse(card["online"])
+        self.assertFalse(card["receiver_online"])
+        self.assertEqual(card["errors"], ["timed out"])
+
+    def test_rf_mute_and_power_helpers(self):
+        self.assertTrue(psm_rf_muted("1"))
+        self.assertTrue(psm_rf_muted("0001"))
+        self.assertFalse(psm_rf_muted("0"))
+        self.assertFalse(psm_rf_muted("0000"))
+        self.assertEqual(psm_rf_power("010"), "10 mW")
+        self.assertEqual(psm_rf_power("100"), "100 mW")
+
+
+class PSM1000StatusTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rack_fans_transmitters_out_to_labelled_pack_cards(self):
+        class Reader:
+            def __init__(self):
+                self.done = False
+
+            async def read(self, _size):
+                if self.done:
+                    return b""
+                self.done = True
+                return (
+                    b"< REPORT 1 CHAN_NAME IEM >\r\n< REPORT 1 FREQUENCY 578000 >\r\n< REPORT 1 RF_MUTE 0 >\r\n"
+                    b"< REPORT 1 RF_TX_LVL 50 >\r\n< REPORT 1 AUDIO_IN_LVL_L 900 >\r\n< REPORT 1 AUDIO_IN_LVL_R 850 >\r\n"
+                    b"< REPORT 2 CHAN_NAME IEM 4/5 >\r\n< REPORT 2 FREQUENCY 581200 >\r\n< REPORT 2 RF_MUTE 1 >\r\n"
+                    b"< REPORT 2 RF_TX_LVL 50 >\r\n< REPORT 2 AUDIO_IN_LVL_L 600 >\r\n< REPORT 2 AUDIO_IN_LVL_R 300 >\r\n"
+                )
+
+        class Writer:
+            def write(self, _data):
+                pass
+
+            async def drain(self):
+                pass
+
+            def close(self):
+                pass
+
+            async def wait_closed(self):
+                pass
+
+        client = PSM1000Client({"enabled": True, "iem_packs": [
+            {"id": "iem", "label": "IEM", "host": "10.0.0.1", "transmitter": 1, "side": "stereo"},
+            {"id": "iem4", "label": "IEM 4", "host": "10.0.0.1", "transmitter": 2, "side": "left"},
+            {"id": "iem5", "label": "IEM 5", "host": "10.0.0.1", "transmitter": 2, "side": "right"},
+        ]})
+        with patch("app.modules.shure.asyncio.open_connection", AsyncMock(return_value=(Reader(), Writer()))):
+            cards = await client.status()
+        self.assertEqual([card["name"] for card in cards], ["IEM", "IEM 4", "IEM 5"])
+        self.assertTrue(all(card["pack"] and card["battery_percent"] is None for card in cards))
+        self.assertEqual(cards[0]["frequency"], "578.000 MHz")
+        self.assertFalse(cards[0]["muted"])
+        self.assertTrue(cards[1]["muted"])
+        self.assertTrue(cards[2]["muted"])
+        self.assertEqual(cards[1]["frequency"], "581.200 MHz")
+        self.assertEqual(cards[1]["channel"], 2)
+        self.assertEqual(cards[1]["rf_power"], "50 mW")
+        self.assertGreater(cards[1]["audio"], cards[2]["audio"])  # left mix hotter than right
+        self.assertTrue(all(not card["errors"] for card in cards))
 
 
 class SennheiserTests(unittest.TestCase):

@@ -188,3 +188,159 @@ class ShureClient:
                 "name": configured_name or state["name"],
             })
         return output
+
+
+# --- Shure PSM1000 (P10T in-ear transmitters) ------------------------------------
+#
+# Same command-string family / TCP 2202 as the receivers above, but a P10T is a
+# transmitter: no battery, no received-RF metric. What it reports is frequency,
+# RF mute, RF power and a stereo input audio meter (AUDIO_IN_LVL_L / _R). A P10T
+# rack unit carries two transmitters, addressed as channel 1 and 2. The RF is
+# always stereo; "dual mono" is a usage pattern (a different mono mix on L vs R,
+# each performer's pack panned to a side), not a transmitter mode. Config is an
+# explicit `iem_packs` list -- one row per physical pack, carrying the label
+# printed on the bodypack -- so a dual-mono transmitter contributes two rows
+# (side "left" / "right", each showing its own meter) and a stereo transmitter
+# one row (side "stereo", showing the louder of L/R). Two protocol quirks vs the
+# receivers: commands must be CRLF-terminated, and box-level replies (no channel
+# index, e.g. DEVICE_NAME) don't match FRAME -- we don't rely on them.
+
+PSM_QUERY_KEYS = ("CHAN_NAME", "FREQUENCY", "RF_MUTE", "RF_TX_LVL")
+
+# AUDIO_IN_LVL_L/_R full-scale. The published command-strings page does not
+# document the range; live P10T values run ~0-1900, consistent with
+# dBFS = value / 50 - 50 (0..2500 spanning -50..0 dBFS). UNCONFIRMED -- confirm
+# at a rehearsal with real programme levels and retune this one constant.
+PSM_AUDIO_FULL_SCALE = 2500
+
+
+def psm_audio_percent(value: str) -> int:
+    """PSM1000 AUDIO_IN_LVL_L/_R meter -> 0-100% against PSM_AUDIO_FULL_SCALE."""
+    try:
+        raw = int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, round(raw / PSM_AUDIO_FULL_SCALE * 100)))
+
+
+def psm_rf_muted(value: str) -> bool:
+    """RF_MUTE reports 1 = muted, 0 = unmuted (value may be zero-padded)."""
+    token = (value or "").strip()
+    return token.lstrip("0") == "1" or token.upper() == "ON"
+
+
+def psm_rf_power(value: str) -> str:
+    """RF_TX_LVL -> a display string like '10 mW' (pass raw through if non-numeric)."""
+    token = (value or "").strip()
+    trimmed = token.lstrip("0") or "0"
+    return f"{int(trimmed)} mW" if trimmed.isdigit() else token
+
+
+def psm_pack_card(row: dict[str, Any], tx: dict[str, Any], *, online: bool = True, error: str = "") -> dict[str, Any]:
+    """Build one pack card from a configured `iem_packs` row and its transmitter state."""
+    side = str(row.get("side") or "stereo").strip().lower()
+    transmitter = int(row.get("transmitter") or 1)
+    label = str(row.get("label") or "").strip() or f"Pack {transmitter}"
+    if side in ("left", "l"):
+        audio = int(tx.get("audio_l") or 0)
+    elif side in ("right", "r"):
+        audio = int(tx.get("audio_r") or 0)
+    else:
+        audio = max(int(tx.get("audio_l") or 0), int(tx.get("audio_r") or 0))
+    errors = [error] if error else []
+    present = bool(online and tx.get("frequency"))
+    if online and not present and not errors:
+        errors.append("Transmitter not responding")
+    return {
+        "id": str(row.get("id") or f"{row.get('host')}-{transmitter}-{side}"),
+        "name": label,
+        "receiver": str(row.get("rack_name") or row.get("host") or "PSM1000"),
+        "channel": transmitter,
+        "model": "psm1000",
+        "pack": True,
+        "battery_percent": None,
+        "rf": None,
+        "audio": audio,
+        "frequency": str(tx.get("frequency") or ""),
+        "muted": bool(tx.get("rf_mute")),
+        "rf_power": str(tx.get("rf_power") or ""),
+        "online": present,
+        "receiver_online": bool(online),
+        "default_photo": "",
+        "errors": errors,
+    }
+
+
+class PSM1000Client:
+    """Poll Shure PSM1000 P10T rack transmitters via command strings over TCP 2202."""
+
+    def __init__(self, settings: dict[str, Any]):
+        self.settings = settings
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.settings.get("enabled") and self.settings.get("iem_packs"))
+
+    def _racks(self) -> list[dict[str, Any]]:
+        grouped: dict[tuple[str, int], dict[str, Any]] = {}
+        for row in self.settings.get("iem_packs") or []:
+            host = str(row.get("host") or "").strip()
+            if not host:
+                continue
+            port = int(row.get("port") or 2202)
+            rack = grouped.setdefault((host, port), {"host": host, "port": port, "rows": []})
+            rack["rows"].append(row)
+        return list(grouped.values())
+
+    async def status(self) -> list[dict[str, Any]]:
+        results = await asyncio.gather(*(self._rack(rack) for rack in self._racks()))
+        return [card for result in results for card in result]
+
+    async def _rack(self, rack: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = rack.get("rows") or []
+        transmitters = sorted({int(row.get("transmitter") or 1) for row in rows})
+        tx_states: dict[int, dict[str, Any]] = {tx: {} for tx in transmitters}
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(str(rack.get("host", "")), int(rack.get("port", 2202))), timeout=2)
+            # Unlike the QLX/ULX/Axient receivers, a P10T only acts on a command
+            # that is terminated by CRLF, and ignores run-on strings. Start metering
+            # first so AUDIO_IN_LVL reports stream in alongside the GET replies.
+            for tx in transmitters:
+                writer.write(f"< SET {tx} METER_RATE 00100 >\r\n".encode())
+                for key in PSM_QUERY_KEYS:
+                    writer.write(f"< GET {tx} {key} >\r\n".encode())
+            await writer.drain()
+            raw = b""
+            deadline = asyncio.get_running_loop().time() + 1.25
+            try:
+                while len(raw) < 32768:
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        break
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=min(0.45, remaining))
+                    if not chunk:
+                        break
+                    raw += chunk
+                    seen = {(int(m.group(1)), m.group(2)) for m in FRAME.finditer(raw.decode(errors="ignore"))}
+                    # RF_TX_LVL is the last GET per transmitter (so the config values
+                    # already landed); also wait for one audio meter report per side.
+                    if all((tx, "RF_TX_LVL") in seen and (tx, "AUDIO_IN_LVL_L") in seen for tx in transmitters):
+                        break
+            except asyncio.TimeoutError:
+                pass
+            writer.close()
+            await writer.wait_closed()
+            for match in FRAME.finditer(raw.decode(errors="ignore")):
+                tx, key, value = int(match.group(1)), match.group(2), (match.group(3) or "").strip()
+                state = tx_states.get(tx)
+                if state is None:
+                    continue
+                if key == "CHAN_NAME": state["chan_name"] = value.replace("_", " ").strip()
+                elif key == "FREQUENCY": state["frequency"] = format_frequency(value)
+                elif key == "RF_MUTE": state["rf_mute"] = psm_rf_muted(value)
+                elif key == "RF_TX_LVL": state["rf_power"] = psm_rf_power(value)
+                elif key == "AUDIO_IN_LVL_L": state["audio_l"] = psm_audio_percent(value)
+                elif key == "AUDIO_IN_LVL_R": state["audio_r"] = psm_audio_percent(value)
+        except (OSError, asyncio.TimeoutError) as exc:
+            return [psm_pack_card(row, {}, online=False, error=str(exc) or "Transmitter unavailable") for row in rows]
+        return [psm_pack_card(row, tx_states.get(int(row.get("transmitter") or 1), {}), online=True) for row in rows]
