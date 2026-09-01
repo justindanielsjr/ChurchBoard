@@ -764,12 +764,12 @@ class ShureStatusTests(unittest.IsolatedAsyncioTestCase):
 
 class PSM1000Tests(unittest.TestCase):
     def test_configured_requires_enabled_and_packs(self):
-        self.assertFalse(PSM1000Client({"iem_packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
-        self.assertFalse(PSM1000Client({"enabled": True, "iem_packs": []}).configured)
-        self.assertTrue(PSM1000Client({"enabled": True, "iem_packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
+        self.assertFalse(PSM1000Client({"packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
+        self.assertFalse(PSM1000Client({"enabled": True, "packs": []}).configured)
+        self.assertTrue(PSM1000Client({"enabled": True, "packs": [{"label": "IEM", "host": "10.0.0.1", "transmitter": 1}]}).configured)
 
     def test_racks_group_iem_packs_by_host(self):
-        client = PSM1000Client({"enabled": True, "iem_packs": [
+        client = PSM1000Client({"enabled": True, "packs": [
             {"label": "IEM 2", "host": "10.0.0.1", "transmitter": 1, "side": "left"},
             {"label": "IEM 3", "host": "10.0.0.1", "transmitter": 1, "side": "right"},
             {"label": "GTR 2", "host": "10.0.0.2", "transmitter": 1, "side": "stereo"},
@@ -838,7 +838,7 @@ class PSM1000StatusTests(unittest.IsolatedAsyncioTestCase):
             async def wait_closed(self):
                 pass
 
-        client = PSM1000Client({"enabled": True, "iem_packs": [
+        client = PSM1000Client({"enabled": True, "packs": [
             {"id": "iem", "label": "IEM", "host": "10.0.0.1", "transmitter": 1, "side": "stereo"},
             {"id": "iem4", "label": "IEM 4", "host": "10.0.0.1", "transmitter": 2, "side": "left"},
             {"id": "iem5", "label": "IEM 5", "host": "10.0.0.1", "transmitter": 2, "side": "right"},

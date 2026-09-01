@@ -201,9 +201,11 @@ class ShureClient:
 # explicit `iem_packs` list -- one row per physical pack, carrying the label
 # printed on the bodypack -- so a dual-mono transmitter contributes two rows
 # (side "left" / "right", each showing its own meter) and a stereo transmitter
-# one row (side "stereo", showing the louder of L/R). Two protocol quirks vs the
-# receivers: commands must be CRLF-terminated, and box-level replies (no channel
-# index, e.g. DEVICE_NAME) don't match FRAME -- we don't rely on them.
+# one row (side "stereo", showing the louder of L/R). Config lives at
+# settings.iem = {"enabled": bool, "packs": [ {id,label,host,port,transmitter,
+# side}, ... ]}. Two protocol quirks vs the receivers: commands must be
+# CRLF-terminated, and box-level replies (no channel index, e.g. DEVICE_NAME)
+# don't match FRAME -- we don't rely on them.
 
 PSM_QUERY_KEYS = ("CHAN_NAME", "FREQUENCY", "RF_MUTE", "RF_TX_LVL")
 
@@ -279,11 +281,11 @@ class PSM1000Client:
 
     @property
     def configured(self) -> bool:
-        return bool(self.settings.get("enabled") and self.settings.get("iem_packs"))
+        return bool(self.settings.get("enabled") and self.settings.get("packs"))
 
     def _racks(self) -> list[dict[str, Any]]:
         grouped: dict[tuple[str, int], dict[str, Any]] = {}
-        for row in self.settings.get("iem_packs") or []:
+        for row in self.settings.get("packs") or []:
             host = str(row.get("host") or "").strip()
             if not host:
                 continue

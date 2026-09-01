@@ -631,6 +631,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(saved.json()["shure"]["mics"][0]["model"], "axient")
 
+    def test_iem_pack_settings_round_trip(self):
+        settings = self.client.get("/api/settings").json()
+        settings["iem"] = {"enabled": True, "packs": [
+            {"id": "iem2", "label": "IEM 2", "host": "10.100.3.221", "port": 2202, "transmitter": 1, "side": "left"},
+            {"id": "iem3", "label": "IEM 3", "host": "10.100.3.221", "port": 2202, "transmitter": 1, "side": "right"},
+        ]}
+        saved = self.client.put("/api/settings", json=settings)
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.json()["iem"]["enabled"])
+        self.assertEqual([pack["label"] for pack in saved.json()["iem"]["packs"]], ["IEM 2", "IEM 3"])
+        self.assertEqual(saved.json()["iem"]["packs"][1]["side"], "right")
+
     def test_manual_mic_channels_round_trip_and_drop_blank_rows(self):
         settings = self.client.get("/api/settings").json()
         settings["manual_mic_channels"] = [{"id": "gtr-1", "name": "Acoustic Guitar"}]

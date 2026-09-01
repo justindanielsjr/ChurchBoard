@@ -134,8 +134,17 @@ window wants a rehearsal.
   parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
 ### Phase 4 — Shure PSM1000 integration — 🔨 in progress on branch `phase-4-psm1000` (stacked on
-`phase-3-axient`). **4a done** (`PSM1000Client` + tests, validated against the live racks). 4b (settings + UI),
-4c (runtime merge into `state["mics"]`), 4d (assignment dropdown + card PACK line) still to do.
+`phase-3-axient`). **4a + 4b done.** 4c (runtime merge into `state["mics"]`), 4d (assignment dropdown + card
+PACK line) still to do.
+- **4b** (settings + UI): `settings.iem = {"enabled": bool, "packs": [ {id,label,host,port,transmitter,side} ]}`
+  — an opaque `dict[str,Any]` field on `SettingsUpdate` (mirrors `shure`/`sennheiser`; no per-row pydantic
+  model). `module-settings.js`: an `iem.enabled` toggle + a "PSM1000 in-ear packs" section in the mics module
+  settings (`moduleIemPackRows`, `moduleIemPackMarkup`, `data-iem-pack-*` / `data-add-iem-pack` /
+  `data-delete-iem-pack`, hydrate + `collectWireless` write). Row fields: Label / Rack IP / Transmitter (1|2) /
+  Feed (Stereo | Mono L | Mono R). Rows missing label or host are dropped silently on save. `iem` is NOT in the
+  `mics` module `settings_keys` dict (list there crashes `registry.py`). Browser-verified round-trip.
+  `PSM1000Client` now reads `settings["packs"]` (was `iem_packs`) so `runtime.py` can pass `config.get("iem", {})`
+  straight in at 4c.
 
 The P10R bodypack the performer wears is receive-only — no RF path back — so person↔pack is purely the Phase 2
 `person_assignment_map` assignment; there is no pack battery/health telemetry, ever. The P10T rack side

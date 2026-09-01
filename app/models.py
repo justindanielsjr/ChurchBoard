@@ -88,6 +88,7 @@ class SettingsUpdate(BaseModel):
     mics: dict[str, Any] = Field(default_factory=dict)
     shure: dict[str, Any] = Field(default_factory=dict)
     sennheiser: dict[str, Any] = Field(default_factory=dict)
+    iem: dict[str, Any] = Field(default_factory=dict)
     open_sound_meter: dict[str, Any] = Field(default_factory=dict)
     prodmesh_rta: dict[str, Any] = Field(default_factory=dict)
     behringer: dict[str, Any] = Field(default_factory=dict)
