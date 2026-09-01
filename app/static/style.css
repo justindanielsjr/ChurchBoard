@@ -295,3 +295,18 @@ body.moving-widget,body.moving-widget *{cursor:grabbing!important}
 
 /* Faithlife Proclaim controls and preview surfaces. */
 .proclaim-control-pad{grid-template-columns:repeat(3,minmax(0,1fr))}.proclaim-text-slides{display:grid;grid-template-columns:1.25fr 1fr;gap:10px;height:100%}.proclaim-text-slides.one{grid-template-columns:1fr}.proclaim-text-card{display:grid;align-content:center;gap:clamp(5px,2cqw,10px);min-width:0;padding:clamp(14px,4cqw,30px);border:1px solid var(--glass-inner-line,var(--line));border-radius:14px;background:var(--glass-inner,#080c12)}.proclaim-text-card.current{border-color:var(--accent)}.proclaim-text-card small{color:var(--muted);font-weight:850;letter-spacing:.12em}.proclaim-item-title{overflow:hidden;color:var(--muted);font-size:clamp(.7rem,2.6cqw,1.05rem);font-weight:700;text-overflow:ellipsis;white-space:nowrap}.proclaim-text-card strong{font-size:clamp(.9rem,5cqw,2.5rem);font-weight:650;line-height:1.12;text-wrap:balance;white-space:pre-line}.proclaim-text-card em{color:var(--muted);font-size:clamp(.62rem,2.2cqw,.85rem);font-style:normal}.proclaim-ndi{position:relative;width:100%;height:100%;overflow:hidden;border-radius:12px;background:#05080d}.proclaim-ndi img{width:100%;height:100%;object-fit:contain}.proclaim-ndi span{position:absolute;right:12px;bottom:12px;left:12px;padding:7px 10px;border:1px solid #ffffff2b;border-radius:9px;background:#05080dbd;color:#fff;font-weight:800;backdrop-filter:blur(12px)}
+.stage-plot{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.sp-canvas{position:relative;width:100%;max-width:100%;max-height:100%;aspect-ratio:var(--sp-aspect,2);border:1px solid var(--line);border-radius:10px;background:#0a0e15;overflow:hidden}
+.theme-light .sp-canvas{background:#eef2f7}
+.sp-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
+.sp-marker{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;width:clamp(58px,13cqw,92px);text-align:center;pointer-events:none}
+.sp-marker .sp-photo{width:clamp(30px,7cqw,52px);height:clamp(30px,7cqw,52px);border-radius:50%;overflow:hidden;border:2px solid #ffffff40;background:linear-gradient(145deg,#354158,#151b25);display:grid;place-items:center;font-size:clamp(.6rem,3cqw,1rem);font-weight:850;box-shadow:0 4px 12px #0007}
+.sp-marker .sp-photo img{width:100%;height:100%;object-fit:cover}
+.sp-name{max-width:100%;font-weight:800;font-size:clamp(.66rem,3.1cqw,.95rem);line-height:1.1;color:#fff;background:#05070ccc;padding:1px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}
+.theme-light .sp-name{color:#fff;background:#1a2230d9}
+.sp-mic{max-width:100%;font-size:clamp(.52rem,2.4cqw,.72rem);color:#ffd479;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}
+.sp-parking{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:6px;padding:6px;background:#05070ce0;border-top:1px solid var(--line);max-height:46%;overflow:auto}
+.sp-parking .sp-marker.parked{position:static;transform:none;width:auto;max-width:120px;flex-direction:row;gap:5px;padding:3px 6px;border:1px dashed var(--line);border-radius:8px;background:#131a25}
+.sp-parking .sp-marker.parked .sp-photo{width:22px;height:22px}
+.sp-parking .sp-marker.parked .sp-name{background:none;padding:0;text-shadow:none;font-size:.72rem}
+.sp-parking .sp-marker.parked .sp-mic{display:none}

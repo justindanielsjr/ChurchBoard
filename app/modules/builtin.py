@@ -27,6 +27,7 @@ BUILTIN_MODULES = [
             widget("assignments", "Scheduled Positions & Mics", "Planning Center", 7, 6, team_ids=[], position_keys=[], position_labels={}, person_assignment_map={}, display_mode="photos", card_grouping="person", use_planning_center_icon=False, unassigned_media_title="Icon"),
             widget("order", "Order of service", "Service & timing", 5, 3, display_mode="current", limit=6, show_leader=False, show_mic=False, show_production_note=False, production_note_field="", production_note_fields=[], production_note_colors={}),
             widget("people", "Team members", "Planning Center", 4, 4, team_ids=[], position_keys=[], position_labels={}),
+            widget("stage_plot", "Stage plot", "Planning Center", 6, 5, team_ids=[], position_keys=[], position_labels={}, background_image="", background_aspect=2.0, placements={}, show_rf=False),
             widget("sermon_notes", "Sermon notes", "Planning Center", 5, 5, item_title="Message", field_name="Vocals", font_scale=100),
             widget("controls", "Service controls", "Service & timing", 4, 2),
         ],

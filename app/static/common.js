@@ -124,6 +124,48 @@ const filteredPeople = (settings,state) => {
   return people.filter(matchesTeam);
 };
 const normalized = value => String(value||"").trim().toLocaleLowerCase();
+const stagePlotEntries = (settings,state) => {
+  const people=filteredPeople(settings,state),mics=state.mics||[],placements=settings.placements||{};
+  const micNameFor=person=>{
+    const ids=new Set([String(person.person_id||""),String(person.id||"")].filter(Boolean));
+    const hit=mics.find(mic=>ids.has(String(mic.assignment?.person_id||""))||ids.has(String(mic.assignment?.id||"")))
+      ||mics.find(mic=>normalized(mic.assignment?.name)===normalized(person.name))
+      ||mics.find(mic=>person.position_key&&normalized(mic.assignment?.position_key)===normalized(person.position_key));
+    return hit?String(hit.name||hit.receiver||""):"";
+  };
+  const entries=people.map(person=>{
+    const id=String(person.person_id||person.id||""),personKeys=(person.position_keys?.length?person.position_keys:[person.position_key]).filter(Boolean);
+    const positionKey=personKeys.find(key=>placements[key])||person.position_key||personKeys[0]||"";
+    const override=placements["p:"+id]&&Number.isFinite(placements["p:"+id].x)?placements["p:"+id]:null;
+    const anchorSpot=override||(placements[positionKey]&&Number.isFinite(placements[positionKey].x)?placements[positionKey]:null);
+    return {id,name:person.name||"Unassigned",photo:person.photo||"",team:person.team_name||"",
+      subtitle:[person.position,person.team_name].filter(Boolean).join(" · "),mic:micNameFor(person),
+      positionKey,pinned:!!override,anchor:anchorSpot?{x:Number(anchorSpot.x),y:Number(anchorSpot.y)}:null};
+  });
+  const groups=new Map();
+  entries.forEach(entry=>{if(entry.anchor&&!entry.pinned){const group=groups.get(entry.positionKey)||[];group.push(entry);groups.set(entry.positionKey,group)}});
+  groups.forEach(group=>{
+    if(group.length<2)return;
+    group.sort((a,b)=>a.id.localeCompare(b.id));
+    const spread=0.06;
+    group.forEach((entry,index)=>{entry.anchor={x:entry.anchor.x+(index-(group.length-1)/2)*spread,y:entry.anchor.y}});
+  });
+  return entries;
+};
+const stagePlotMarkerInner = entry => {
+  const photo=entry.photo?`<img src="${escapeHtml(entry.photo)}" alt="">`:initialsMarkup(entry.name);
+  return `<span class="sp-photo">${photo}</span><span class="sp-name">${escapeHtml(entry.name)}</span>${entry.mic?`<span class="sp-mic">${escapeHtml(entry.mic)}</span>`:""}`;
+};
+const stagePlotMarkup = (settings,state) => {
+  const entries=stagePlotEntries(settings,state);
+  if(!entries.length)return `<div class="empty">Choose teams or positions in this widget’s settings</div>`;
+  const aspect=Number(settings.background_aspect)>0?Number(settings.background_aspect):2;
+  const bg=settings.background_image?`<img class="sp-bg" src="${escapeHtml(settings.background_image)}" alt="">`:"";
+  const placed=entries.filter(entry=>entry.anchor),parked=entries.filter(entry=>!entry.anchor);
+  const markers=placed.map(entry=>`<div class="sp-marker${entry.pinned?" pinned":""}" style="left:${Math.max(0,Math.min(100,entry.anchor.x*100)).toFixed(2)}%;top:${Math.max(0,Math.min(100,entry.anchor.y*100)).toFixed(2)}%">${stagePlotMarkerInner(entry)}</div>`).join("");
+  const strip=parked.length?`<div class="sp-parking" aria-label="People without a placed spot">${parked.map(entry=>`<div class="sp-marker parked">${stagePlotMarkerInner(entry)}</div>`).join("")}</div>`:"";
+  return `<div class="stage-plot${settings.show_rf?" show-rf":""}"><div class="sp-canvas${settings.background_image?" has-bg":""}" style="--sp-aspect:${aspect}">${bg}${markers}${strip}</div></div>`;
+};
 const presentationDisplayTitle = pp => {
   const planningTitle=String(pp.planning_center_item_title||(pp.service_item_is_pco?pp.service_item_title:"")||"").trim(),propresenterTitle=String(pp.title||pp.presentation?.name||pp.presentation?.id?.name||"").trim();
   if(planningTitle&&propresenterTitle&&normalized(planningTitle)!==normalized(propresenterTitle))return`${planningTitle} [${propresenterTitle}]`;
@@ -283,6 +325,7 @@ const legacyWidgetMarkup = (widget, state) => {
   if(widget.type==="pp_macros") {const macros=Array.isArray(pp.macros)?pp.macros:[],selected=new Set(settings.macro_ids||[]),visible=settings.macro_mode==="selected"?macros.filter(macro=>selected.has(String(macro.id))):macros;content=visible.length?`<div class="pp-macro-grid">${visible.map(macro=>`<button type="button" data-pp-macro="${escapeHtml(macro.id)}" style="--macro-color:${safeCssColor(macro.color||"#50627a")}"><i></i><strong>${escapeHtml(macro.name)}</strong></button>`).join("")}</div>`:`<div class="empty">${macros.length?"Choose macros in this widget’s settings":"No ProPresenter macros returned"}</div>`;}
   if(widget.type==="order") { const items=timing.service_items||service.items||[],current=timing.current_item?.id,displayMode=["full","fit"].includes(settings.display_mode)?settings.display_mode:"current",fullOrder=displayMode!=="current",fullFit=displayMode==="fit",visibleItems=fullOrder?items:visibleOrderItems(items,current,settings.limit);const serviceClock=formatClockTime(timing.service_start_at||service.starts_at,state.timezone),serviceNumber=Number(timing.service_time_count)>1?`Service ${Number(timing.service_time_index)||1} of ${Number(timing.service_time_count)}`:"Service",adjusting=["running","live","controlled"].includes(timing.state),drift=Number(timing.overall_delta||0),driftLabel=adjusting&&Math.abs(drift)>=30?`${formatDuration(drift)} ${drift>0?"late":"early"}`:"On time",navigation=displayMode==="full"?`<div class="order-navigation" aria-label="Service order navigation"><button type="button" data-order-jump="start">Start</button><button type="button" data-order-jump="current">Current</button><button type="button" data-order-jump="end">End</button></div>`:"";content=items.length?`<div class="order-layout ${fullOrder?"full-service-order":""} ${fullFit?"full-service-order-fit":""}"><div class="order-service-time"><strong>${escapeHtml(serviceClock)}</strong><span>${escapeHtml(serviceNumber)} · <em data-order-drift>${escapeHtml(driftLabel)}</em></span></div>${navigation}<ol class="order-list ${!fullOrder?"current-service-order-list":""} ${displayMode==="full"?"full-service-order-list":""} ${fullFit?"full-service-order-fit-list":""}"${displayMode==="full"?' tabindex="0"':""} aria-label="${fullOrder?"Full service order":"Service order"}">${visibleItems.map(item=>{const active=String(item.id)===String(current),header=isOrderHeader(item),detail=header?"":orderLeaderMarkup(item,state,settings),productionNote=header?"":orderProductionNoteMarkup(item,settings),estimate=estimatedItemTime(item,timing,state);return`<li class="${active?"active ":""}${header?"order-header":"order-item"}"${active?' aria-current="step"':""}><span class="order-marker">${active&&!header?"▶":""}</span><span class="order-main"><b>${escapeHtml(item.title)}</b>${detail}${productionNote}</span>${header?"":`<span class="order-timing"><span class="order-duration"><strong>${formatItemLength(item.length)}</strong><small>DURATION</small></span><span class="order-eta"><strong data-order-eta data-starts-after="${Number(item.starts_after)||0}">${escapeHtml(estimate)}</strong><small>EST</small></span></span>`}</li>`}).join("")}</ol></div>`:`<div class="empty">No service items</div>`; }
   if(widget.type==="people") { const people=filteredPeople(settings,state);content=people.length?`<div class="people-list">${people.map(person=>`<div class="people-row"><div class="people-avatar">${person.photo?`<img src="${escapeHtml(person.photo)}" alt="">`:initialsMarkup(person.name)}</div><div class="people-copy" data-fit-person><strong>${escapeHtml(person.name||"Unassigned")}</strong><span>${escapeHtml([person.position,person.team_name].filter(Boolean).join(" · "))}</span></div></div>`).join("")}</div>`:`<div class="empty">No scheduled people match these filters</div>`; }
+  if(widget.type==="stage_plot") content=stagePlotMarkup(settings,state);
   if(widget.type==="spl") { const green=Number(settings.green_max??75),orange=Number(settings.orange_max??85),weighting=["A","B","C","Z"].includes(settings.weighting)?settings.weighting:"A",response=settings.response==="Slow"?"Slow":"Fast",metricKey=`${weighting.toLowerCase()}_${response.toLowerCase()}`,metricLabel=`${weighting}-weighted ${response}`,osm=state.osm||{},value=Number(osm[metricKey]),reportId=timing.service_time_id?`${service.id}--${timing.service_time_id}`:service.id,reports=osm.reports_enabled!==false&&settings.reports_enabled!==false&&service.id?`<div class="osm-report-links"><a href="/api/reports/services/${encodeURIComponent(reportId)}/spl-graph.html" download>Download SPL graph</a><a href="/api/reports/services/${encodeURIComponent(reportId)}/spl-averages.csv" download>Download item averages</a></div>`:"";content=`<div class="spl-meter" data-spl-meter data-green="${green}" data-orange="${orange}" data-osm-key="${metricKey}" data-osm-label="${metricLabel}"><div class="spl-reading"><strong data-spl-value>${Number.isFinite(value)?value.toFixed(1):"--"}</strong><span>dB</span></div><div class="spl-scale"><span>${metricLabel} · Green ≤ ${green}</span><span>Orange ≤ ${orange}</span><span>Red &gt; ${orange}</span></div><div class="spl-status" data-spl-status>${osm.connected?"Open Sound Meter connected":"Waiting for Open Sound Meter"}</div>${reports}</div>`; }
   if(widget.type==="prodmesh_rta") {const rta=state.prodmesh_rta||{},mode=settings.display_mode||"both",metric=String(settings.metric||"fast_db"),value=Number(rta[metric]??rta.metrics?.[metric]),bands=rta.bands_db||[],centers=rta.centers_hz||[],signal=rta.signal?.state||"unknown",calibration=Number(rta.cal_db),ceiling=Number.isFinite(calibration)?calibration:(rta.mode==="program"?0:100),floor=ceiling-80,live=rta.transport==="websocket";content=`<div class="prodmesh-layout mode-${escapeHtml(mode)} ${rta.connected?"connected":"offline"}"><div class="prodmesh-reading"><strong data-fit-widget-text>${Number.isFinite(value)?value.toFixed(1):"--"}</strong><span>${rta.mode==="program"?(metric.toLowerCase().includes("lufs")?"LUFS":"dBFS"):"dB SPL"}</span><small>${escapeHtml(rta.weighting||"")} · ${escapeHtml(signal)}</small></div><div class="prodmesh-bars" aria-label="31-band real-time analyzer scaled from ${floor.toFixed(0)} to ${ceiling.toFixed(0)} dB">${bands.map((band,index)=>{const numeric=Number(band),level=Number.isFinite(numeric)?Math.max(1,Math.min(100,(numeric-floor)/80*100)):1;return`<i title="${escapeHtml(centers[index]||"")} Hz · ${numeric.toFixed(1)} dB" style="--rta-level:${level}%"></i>`}).join("")}</div><div class="prodmesh-status">${escapeHtml(rta.connected?`${live?"LIVE · ":""}ProdMesh RTA · ${floor.toFixed(0)} to ${ceiling.toFixed(0)} dB`:rta.error||"Waiting for ProdMesh RTA")}</div></div>`;}
   if(widget.type==="behringer_faders") content=behringerMarkup(settings,state);
