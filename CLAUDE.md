@@ -294,6 +294,15 @@ about a more stable window to view `/display/<slug>` through. Options, cheapest 
 Recommended order: do (1)+(2) after the Phases 2–5 merge; build (3) only if Safari also degrades or the lack of
 lockdown bites. Would be "Phase 6".
 
+### Decisions (won't-do, so they don't resurface)
+- **NDI + Behringer (X32/M32) modules:** this church uses neither (no NDI; console is Allen & Heath dLive).
+  Decision: **uninstall the modules in the setup UI, do NOT strip the source** — stripping a fork of an
+  actively developed upstream just buys endless merge conflicts, and the modules are inert when disabled.
+  On the Mac deployment, don't install the NDI SDK and that module stays fully dormant.
+- **Allen & Heath dLive console integration:** discussed (feasible — MIDI-over-TCP port 51325 or possibly
+  OSC on current firmware; scope ~ one Shure phase; no live input metering over MIDI; the useful parts would
+  be volunteer monitor mixing + mute/DCA state + current scene name). **Not being pursued** — no need.
+
 ## Working style notes
 - Patches/diffs against upstream drift fast (upstream ChurchBoard is actively developed) — if working from a fresh
   clone or pulling upstream changes, expect to re-verify insertion points in `common.js`/`editor.js` rather than
