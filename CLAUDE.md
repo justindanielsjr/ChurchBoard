@@ -86,10 +86,25 @@ This scope went through several iterations before landing here — don't rebuild
   transmitters into the same `state.mics` list and the pack slot lights up automatically. Legacy paths
   (`position_mic_map`, demo, standalone) have no `slot` on their equipment → single unlabelled gear line, unchanged.
 
-### Phase 3 — Shure Axient Digital integration — ✅ code complete, browser-verified, NOT committed. Needs
-AD4Q/AD600 bench time to confirm the meter-scaling windows before it's fully trusted. Built from the official
-published spec (www.shure.com/en-US/docs/commandstrings/AD4 — "AD4" is the current URL slug; `pubs.shure.com`
-redirects there). Same GET/REP/SAMPLE parser and TCP 2202 as the QLX/ULX/SLX path — Axient just takes a branch.
+### Phase 3 — Shure Axient Digital integration — ✅ code complete + browser-verified, committed on branch
+`phase-3-axient` (stacked on `phase-2-assignments`). Built from the official published spec
+(www.shure.com/en-US/docs/commandstrings/AD4 — "AD4" is the current URL slug; `pubs.shure.com` redirects there).
+Same GET/REP/SAMPLE parser and TCP 2202 as the QLX/ULX/SLX path — Axient just takes a branch.
+
+**Hardware:** 3× AD4Q on the production LAN — Shure Control IPs `10.100.3.217` (AD4Q-1, 4× ADX2),
+`.218` (AD4Q-2, 4× ADX2), `.219` (AD4Q-3, 4× ADX1). `10.100.3.216` is an AD600 **Spectrum Manager** (no
+per-channel transmitter/audio/RF telemetry — not a receiver for our purposes). The dev box can reach all three
+AD4Qs directly on 2202. `tools/axient_probe.py` captures raw command-string traffic (all receivers over one
+window, with Shure's dB conversions annotated inline) — that is the calibration instrument.
+
+**Verified against real hardware (2026-09-01, transmitters OFF):** every token/frame the branch relies on is
+spelled and shaped exactly as the spec says — `TX_BATT_CHARGE_PERCENT`, `TX_MODEL` (`UNKNOWN` when no TX),
+`FD_MODE` (`OFF`), `ANTENNA_STATUS` (`XX` when no TX), the 9-field `SAMPLE x ALL`, `FREQUENCY` as `0604550`.
+No-signal floors: RSSI raw ≈ 9–12 (≈ −108…−111 dBm), `audRms` raw `033` (−87 dBFS), `audPeak` raw `005`
+(−115 dBFS), `CHAN_QUALITY` `255`. **Still outstanding:** transmitters powered on with real mic levels at
+service gain staging — needed only to set the RF (−100..−40 dBm) and audio (−50..0 dBFS) windows in
+`axient_meter_percent`. RF range can be had any time someone powers a TX and walks it near→far; the audio
+window wants a rehearsal.
 
 - **Model plumbing** (`module-settings.js`): new **"Shure Axient Digital"** `<option>` in the per-mic Receiver
   dropdown (`data-mic-field="manufacturer"` → `shure-axient`). `hydrateModuleMics` maps stored `model:"axient"`
