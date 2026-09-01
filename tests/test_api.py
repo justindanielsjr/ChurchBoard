@@ -622,6 +622,40 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 200)
         self.assertEqual(deleted.json()["shure"]["mics"], [])
 
+    def test_manual_mic_channels_round_trip_and_drop_blank_rows(self):
+        settings = self.client.get("/api/settings").json()
+        settings["manual_mic_channels"] = [{"id": "gtr-1", "name": "Acoustic Guitar"}]
+        saved = self.client.put("/api/settings", json=settings)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["manual_mic_channels"], [{"id": "gtr-1", "name": "Acoustic Guitar"}])
+
+        settings = saved.json()
+        settings["manual_mic_channels"] = []
+        cleared = self.client.put("/api/settings", json=settings)
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.json()["manual_mic_channels"], [])
+
+        settings["manual_mic_channels"] = [{"id": "gtr-2", "name": "   "}]
+        rejected = self.client.put("/api/settings", json=settings)
+        self.assertEqual(rejected.status_code, 422)
+
+    def test_manual_people_round_trip_and_reject_bad_rows(self):
+        settings = self.client.get("/api/settings").json()
+        settings["manual_people"] = [{"id": "walkon-1", "name": "Sam Walker", "photo": "data:image/png;base64,abc"}]
+        saved = self.client.put("/api/settings", json=settings)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["manual_people"], [{"id": "walkon-1", "name": "Sam Walker", "photo": "data:image/png;base64,abc"}])
+
+        settings = saved.json()
+        settings["manual_people"] = [{"id": "walkon-2", "name": "Pat", "photo": "http://example.com/pic.jpg"}]
+        rejected = self.client.put("/api/settings", json=settings)
+        self.assertEqual(rejected.status_code, 422)
+
+        settings["manual_people"] = []
+        cleared = self.client.put("/api/settings", json=settings)
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.json()["manual_people"], [])
+
     def test_service_type_names_are_persisted_with_ids(self):
         settings = self.client.get("/api/settings").json()
         settings["planning_center"].update({"service_type_ids": ["123"], "service_types": [{"id": "123", "name": "Sunday Worship"}]})

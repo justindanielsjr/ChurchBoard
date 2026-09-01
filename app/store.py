@@ -13,7 +13,7 @@ DEFAULT_WIDGETS = [
     {"id": "clock", "type": "clock", "x": 0, "y": 0, "w": 3, "h": 2, "title": "Local Time", "settings": {}},
     {"id": "service", "type": "service", "x": 3, "y": 0, "w": 5, "h": 2, "title": "Service", "settings": {}},
     {"id": "timing", "type": "timing", "x": 8, "y": 0, "w": 4, "h": 2, "title": "Timing", "settings": {}},
-    {"id": "assignments", "type": "assignments", "x": 0, "y": 2, "w": 7, "h": 6, "title": "Scheduled Positions & Mics", "settings": {"team_ids": [], "position_keys": [], "position_labels": {}, "positions": [], "display_mode": "photos", "card_grouping": "person", "use_planning_center_icon": False, "unassigned_media_title": "Icon"}},
+    {"id": "assignments", "type": "assignments", "x": 0, "y": 2, "w": 7, "h": 6, "title": "Scheduled Positions & Mics", "settings": {"team_ids": [], "position_keys": [], "position_labels": {}, "positions": [], "person_assignment_map": {}, "display_mode": "photos", "card_grouping": "person", "use_planning_center_icon": False, "unassigned_media_title": "Icon"}},
     {"id": "slides", "type": "slides", "x": 7, "y": 2, "w": 5, "h": 4, "title": "ProPresenter", "settings": {"show_notes": True, "slide_mode": "image", "slide_layout": "full", "show_current": True, "show_next": True, "show_parts": True, "show_slide_count": False}},
     {"id": "order", "type": "order", "x": 7, "y": 6, "w": 5, "h": 2, "title": "Order of Service", "settings": {"display_mode": "current", "limit": 6, "show_leader": False, "show_mic": False, "show_production_note": False, "production_note_field": "", "production_note_fields": [], "production_note_colors": {}}},
     {"id": "playlist", "type": "playlist", "x": 0, "y": 8, "w": 12, "h": 6, "title": "ProPresenter Playlist", "settings": {"allow_remote_trigger": True, "keyboard_control": False, "density": "comfortable", "auto_scroll": True, "active_border_color": "#f5c400"}},
@@ -75,6 +75,8 @@ def default_data() -> dict[str, Any]:
             "intercom": {"enabled": False, "hosted": True, "url": "", "api_key": "", "api_secret": "", "party_lines": [{"id": "production", "name": "Production"}]},
             "server": {"port": 8040, "producer_port_enabled": True, "producer_port": 80, "https_enabled": False, "ssl_certfile": "", "ssl_keyfile": ""},
             "position_mic_map": {"Vox 1": "mic-1", "Vox 2": "mic-2"},
+            "manual_mic_channels": [],
+            "manual_people": [],
             "manual_plan": None,
             "manual_service_time": None,
         },
@@ -128,6 +130,20 @@ class ConfigStore:
                 **default_data()["settings"]["planning_center"]["live_from_propresenter"],
                 **(raw.get("settings", {}).get("planning_center", {}).get("live_from_propresenter") or {}),
             }
+            baseline["settings"]["manual_mic_channels"] = [
+                {"id": str(entry.get("id") or "").strip(), "name": str(entry.get("name") or "").strip()}
+                for entry in (raw.get("settings", {}).get("manual_mic_channels") or [])
+                if isinstance(entry, dict) and str(entry.get("id") or "").strip() and str(entry.get("name") or "").strip()
+            ]
+            baseline["settings"]["manual_people"] = [
+                {
+                    "id": str(entry.get("id") or "").strip(),
+                    "name": str(entry.get("name") or "").strip(),
+                    "photo": str(entry.get("photo") or "").strip(),
+                }
+                for entry in (raw.get("settings", {}).get("manual_people") or [])
+                if isinstance(entry, dict) and str(entry.get("id") or "").strip() and str(entry.get("name") or "").strip()
+            ]
             baseline["organization"] = {
                 **default_data()["organization"],
                 **(raw.get("organization") or {}),
@@ -164,7 +180,7 @@ class ConfigStore:
                         if widget.get("title") in {"", "Microphones"}:
                             widget["title"] = "Scheduled Positions & Mics"
                     if widget.get("type") == "assignments":
-                        widget["settings"] = {"team_ids": [], "position_keys": [], "position_labels": {}, "display_mode": "photos", "card_grouping": "person", "use_planning_center_icon": False, "unassigned_media_title": "Icon", **widget.get("settings", {})}
+                        widget["settings"] = {"team_ids": [], "position_keys": [], "position_labels": {}, "person_assignment_map": {}, "display_mode": "photos", "card_grouping": "person", "use_planning_center_icon": False, "unassigned_media_title": "Icon", **widget.get("settings", {})}
                     if widget.get("type") == "slides":
                         widget["settings"] = {"slide_mode": "image", "slide_layout": "full", "show_current": True, "show_next": True, "show_parts": True, "show_slide_count": False, "show_notes": True, "show_grid": False, "allow_remote_trigger": False, **widget.get("settings", {})}
                     if widget.get("type") == "playlist":

@@ -39,36 +39,52 @@ Purely typed-in content, not sourced from Planning Center at all (the existing `
 PCO note fields but strips all formatting down to plain text — deliberately left alone since notes are typed directly
 in ChurchBoard here, not in Planning Center).
 
-### Phase 2 — Assignment/pool redesign — IN PROGRESS, not yet built
-This scope went through several iterations before landing here — this is the final agreed shape, don't rebuild
-earlier discarded versions of it:
+### Phase 2 — Assignment/pool redesign — ✅ DONE, browser-verified, committed (branch `phase-2-assignments`,
+commit `8a4ac02`; not pushed/merged). Built in small increments: 2a manual mic channels, 2b manual people list,
+2c person-ID-keyed mapping, 2d combined mic+pack card. Two bug-fix rounds + a card-typography pass along the way.
+This scope went through several iterations before landing here — don't rebuild earlier discarded versions of it.
 
 - **Do NOT build a "team opt-in checkbox" pool mechanism.** Earlier discussion explored letting dashboard widgets
   pull from a Planning Center team's full roster regardless of whether they're scheduled for a given service. This
   was explicitly dropped — testing showed the *existing* `team_ids`/`position_keys` filtering on the assignments/mics
   widget (which already lets you opt teams in or leave them out — e.g. Security stays excluded by simply never being
   checked) is good enough as-is. Leave that mechanism untouched.
-- **Manual people list** — a small settings-backed list (name + optional photo) for people who exist in real life but
-  not as Planning Center People records (e.g. a last-minute walk-on). Independent of PCO entirely.
-- **Manual mic channels** — for the Shure GLXD16 guitar packs, which have no Ethernet/IP control at all. Currently
-  `state.mics` is built *exclusively* from live Shure/Sennheiser network polling
-  (`next_state["mics"] = shure_status + sennheiser_status` in `app/modules/runtime.py`) — there's no existing concept
-  of a channel that isn't a live networked receiver. Need: a small manual-channel list (name only, no IP/model),
-  merged into that same `mics` array, tagged as non-networked. Card rendering (`micCardMarkup` in `common.js`) needs
-  a branch for this: currently `mic.placeholder` means "a person is assigned but no receiver matched" (opposite of
-  what's needed here) — a manual channel needs its own flag so it doesn't render as a fake "OFFLINE" battery/RF
-  reading, more like the honest "no telemetry" treatment already planned for PSM1000 packs in Phase 4. Something
-  like a `networked: false` or `manual: true` flag, with the card showing "Not networked" and no meters.
-- **Person-ID-keyed assignment mapping** — replacing the current `position_mic_map` (position-string → mic ID) with
-  a mapping keyed by person ID, where the person ID can point to either a PCO-scheduled person or a manual person,
-  and the target can be either a networked or manual mic/pack channel. This is the mechanism that makes everything
-  else here possible — manual people and manual channels only matter once assignment isn't locked to PCO position
-  strings.
-- **Combined mic+pack card** — one card per person with two independent optional slots (mic, pack), not two separate
-  boards. Confirmed relevant because packs and mics are physically stored together and only vocals/band ever touch a
-  pack — a security or speaking-team person's card just never shows a pack slot. Card rendering already exists per
-  *mic* (`micCardMarkup`) — extending to show both slots per *person* is a real but contained change on top of the
-  person-ID mapping above.
+- **Manual people list** — ✅ DONE (increment 2b). `settings.manual_people` (list of `{id, name, photo}`; photo is a
+  `data:image/` URI, 6 MB model cap). `ManualPerson` model in `models.py`; `RuntimeService._manual_people()` returns
+  Planning-Center-shaped person dicts tagged `manual: true` with `person_id: ""` and empty positions; folded into
+  `state.people` by `_fold_in_manual_roster()`. UI: "Manual people" section (name + photo picker) in the **mics**
+  module settings. Independent of Planning Center entirely.
+- **Manual mic channels** — ✅ DONE (increment 2a). For the Shure GLXD16 guitar packs, which have no Ethernet/IP
+  control at all. Settings-backed list `settings.manual_mic_channels` (top-level, sibling of `position_mic_map`;
+  each entry `{id, name}` only). `RuntimeService._manual_mic_cards()` turns each into a card dict tagged
+  `manual: true` with `battery_percent/rf/audio: None`, `online: false`, `receiver: "Not networked"`; `refresh()`
+  strips any existing `manual` mics from `next_state["mics"]` and re-adds from settings every cycle (idempotent
+  across the wireless polling branch). `micCardMarkup`/`micHealth` in `common.js` branch on `mic.manual` → neutral
+  grey card, "NOT NETWORKED" status, no meters (`.mic-nonetworked` / `.technical-nonetworked` in place of
+  `micMeters` / `.technical-stats`). This flag is distinct from `mic.placeholder` ("person assigned, no receiver
+  matched"). UI: "Manual channels" section in the **mics** module settings (`/modules#mics`) — name-only rows.
+  Model: `ManualMicChannel` in `models.py`. NOT added to the `mics` module `settings_keys` (that list is
+  dict-shaped and drives enable/disable on uninstall — a list there would crash `registry.py`). Not surfaced in
+  demo mode (demo state returns early before the merge). Tests: `test_core.py` RuntimeAssignmentTests +
+  `test_api.py` round-trip.
+- **Person-ID-keyed assignment mapping** — ✅ DONE (increment 2c). `widget.settings.person_assignment_map` =
+  `{ personId: {mic: "<channelId>", pack: "<channelId>"} }`, keyed by PCO `person_id` or manual person `id`. NOT
+  a global setting and NOT resolved in the runtime — it lives per assignments-widget and is resolved client-side
+  in `assignmentEntries` (`common.js`). `position_mic_map` is untouched (still the position-string fallback).
+  `ManualPerson` model (`models.py`); `RuntimeService._manual_people()` + `_fold_in_manual_roster()` in
+  `runtime.py` (the latter called at BOTH of `refresh()`'s state-publish points — the early ProPresenter publish
+  and the final one — so a request served mid-refresh never sees the roster without manual entries).
+- **Combined mic+pack card** — ✅ DONE (increment 2d). Editor: the assignments-widget settings has a
+  **"Channel assignments"** section — one row per person (scheduled, filtered by team/position, + all manual
+  people + any assigned-but-filtered-out stragglers), each with a **Mic** dropdown and a **Pack** dropdown listing
+  every channel (networked mics + manual channels). A channel belongs to exactly one (person, slot); the change
+  handler clears it from everywhere else first. Card (`micCardMarkup`): `equipment` items carry a `slot`
+  (`"mic"`/`"pack"`); the gear area renders labelled lines — `MIC  Blue · Ch 1` / `PACK  P10T-2` (amber
+  `.gear-line`, small dim `<b>` label) — pack line only when present. **A person with nothing assigned (no mic,
+  no pack) is not rendered on the board at all** (`assignmentEntries` skips person-map entries with no resolved
+  equipment). Packs are just channels — for now they're manual channels; Phase 4 feeds networked P10T
+  transmitters into the same `state.mics` list and the pack slot lights up automatically. Legacy paths
+  (`position_mic_map`, demo, standalone) have no `slot` on their equipment → single unlabelled gear line, unchanged.
 
 ### Phase 3 — Shure Axient Digital integration — not started
 Extend `app/modules/shure.py` (currently only handles QLX-D/ULX-D/SLX-D battery field `BATT_BARS` and a generic

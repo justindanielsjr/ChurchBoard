@@ -368,6 +368,9 @@ class RuntimeService:
                 }
         # Publish slide changes before slower cloud integrations finish so a
         # Planning Center refresh cannot hold up the local ProPresenter view.
+        # Fold the manual roster in here too so a request served during the rest
+        # of this refresh never sees the board without manual people or channels.
+        self._fold_in_manual_roster(next_state, config)
         self.state = deepcopy(next_state)
         proclaim_settings = config.get("proclaim", {})
         proclaim_key = (bool(proclaim_settings.get("enabled")), str(proclaim_settings.get("host") or ""), int(proclaim_settings.get("port") or 52195), str(proclaim_settings.get("password") or ""))
@@ -550,12 +553,27 @@ class RuntimeService:
             next_state["livestreams"] = await self._livestream_statuses(stream_sources, next_state.get("restream") or {}, next_state.get("livestreams") or [])
         elif not stream_sources:
             next_state["livestreams"] = []
+        self._fold_in_manual_roster(next_state, config)
         use_planning_center_for_mics = bool((config.get("mics") or {}).get("use_planning_center_positions", True))
         next_state["use_planning_center_for_mics"] = use_planning_center_for_mics
         self._apply_assignments(next_state, config.get("position_mic_map", {}), use_planning_center_for_mics)
         self._apply_service_control(next_state)
         self.state = next_state
         return self.state
+
+    @staticmethod
+    def _fold_in_manual_roster(state: dict[str, Any], config: dict[str, Any]) -> None:
+        """Merge non-networked channels and off-schedule people into the state.
+
+        Rebuilt from settings on every call so it stays correct no matter which
+        polling branch ran, and applied at both the early and final publish of a
+        refresh so a request served mid-refresh never sees the roster without
+        them.
+        """
+        state["mics"] = [mic for mic in (state.get("mics") or []) if not mic.get("manual")]
+        state["mics"].extend(RuntimeService._manual_mic_cards(config.get("manual_mic_channels") or []))
+        state["people"] = [person for person in (state.get("people") or []) if not person.get("manual")]
+        state["people"].extend(RuntimeService._manual_people(config.get("manual_people") or []))
 
     async def _sync_propresenter_live(self, state: dict[str, Any], pc: PlanningCenterClient, settings: dict[str, Any], clock: float, force: bool = False) -> None:
         service = state.get("service") or {}
@@ -1078,6 +1096,54 @@ class RuntimeService:
             "item_elapsed": elapsed, "item_delta": elapsed - int(current.get("length") or 0),
         }
         state["service_control"] = {"active": True, "index": index, "item_id": current.get("id"), "item_title": current.get("title")}
+
+    @staticmethod
+    def _manual_mic_cards(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        cards: list[dict[str, Any]] = []
+        for entry in entries or []:
+            channel_id = str((entry or {}).get("id") or "").strip()
+            name = str((entry or {}).get("name") or "").strip()
+            if not channel_id or not name:
+                continue
+            cards.append({
+                "id": channel_id,
+                "name": name,
+                "receiver": "Not networked",
+                "channel": "",
+                "battery_percent": None,
+                "rf": None,
+                "audio": None,
+                "online": False,
+                "muted": False,
+                "manual": True,
+                "default_photo": "",
+                "errors": [],
+            })
+        return cards
+
+    @staticmethod
+    def _manual_people(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        people: list[dict[str, Any]] = []
+        for entry in entries or []:
+            person_id = str((entry or {}).get("id") or "").strip()
+            name = str((entry or {}).get("name") or "").strip()
+            if not person_id or not name:
+                continue
+            people.append({
+                "id": person_id,
+                "person_id": "",
+                "manual": True,
+                "name": name,
+                "photo": str((entry or {}).get("photo") or ""),
+                "status": "C",
+                "position": "",
+                "position_key": "",
+                "team_id": "",
+                "team_name": "",
+                "positions": [],
+                "position_keys": [],
+            })
+        return people
 
     @staticmethod
     def _apply_assignments(state: dict[str, Any], mapping: dict[str, str], use_planning_center: bool = True) -> None:

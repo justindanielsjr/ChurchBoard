@@ -184,6 +184,21 @@ class StoreTests(unittest.TestCase):
             store.save(data)
             self.assertEqual(store.load()["dashboards"][0]["widgets"][3]["settings"]["card_grouping"], "person")
 
+    def test_assignment_widget_gains_person_assignment_map_and_keeps_existing_entries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "state.json")
+            data = store.load()
+            assignments = data["dashboards"][0]["widgets"][3]
+            self.assertEqual(assignments["settings"]["person_assignment_map"], {})
+            assignments["settings"].pop("person_assignment_map")
+            store.save(data)
+            self.assertEqual(store.load()["dashboards"][0]["widgets"][3]["settings"]["person_assignment_map"], {})
+            data = store.load()
+            data["dashboards"][0]["widgets"][3]["settings"]["person_assignment_map"] = {"pco-1": {"mic": "mic-1", "pack": ""}}
+            store.save(data)
+            reloaded = store.load()["dashboards"][0]["widgets"][3]["settings"]
+            self.assertEqual(reloaded["person_assignment_map"], {"pco-1": {"mic": "mic-1", "pack": ""}})
+
     def test_public_settings_never_returns_secret(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ConfigStore(Path(directory) / "state.json")
@@ -701,6 +716,76 @@ class RuntimeAssignmentTests(unittest.TestCase):
             self.assertTrue(runtime.state["mics"])
             state = asyncio.run(runtime.refresh(force=True))
             self.assertEqual(state["mics"], [])
+
+    def test_manual_mic_cards_carry_no_telemetry(self):
+        cards = RuntimeService._manual_mic_cards([
+            {"id": "gtr-1", "name": "Acoustic Guitar"},
+            {"id": "", "name": "missing id"},
+            {"id": "gtr-2", "name": "  "},
+        ])
+        self.assertEqual([card["id"] for card in cards], ["gtr-1"])
+        self.assertTrue(cards[0]["manual"])
+        self.assertFalse(cards[0]["online"])
+        self.assertIsNone(cards[0]["battery_percent"])
+        self.assertEqual(cards[0]["receiver"], "Not networked")
+
+    def test_manual_channels_merge_into_live_mic_state_without_duplicating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "state.json")
+            data = store.load()
+            data["settings"]["demo_mode"] = False
+            data["settings"]["shure"] = {"enabled": False, "receivers": [], "mics": []}
+            data["settings"]["manual_mic_channels"] = [{"id": "gtr-1", "name": "Acoustic Guitar"}]
+            store.save(data)
+            runtime = RuntimeService(store)
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual([mic["name"] for mic in state["mics"] if mic.get("manual")], ["Acoustic Guitar"])
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual(len([mic for mic in state["mics"] if mic.get("manual")]), 1)
+            data = store.load()
+            data["settings"]["manual_mic_channels"] = []
+            store.save(data)
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual([mic for mic in state["mics"] if mic.get("manual")], [])
+
+    def test_manual_people_have_a_planning_center_compatible_shape(self):
+        people = RuntimeService._manual_people([
+            {"id": "walkon-1", "name": "Sam Walker", "photo": "data:image/png;base64,abc"},
+            {"id": "", "name": "no id"},
+        ])
+        self.assertEqual([person["id"] for person in people], ["walkon-1"])
+        person = people[0]
+        self.assertTrue(person["manual"])
+        self.assertEqual(person["person_id"], "")
+        self.assertEqual(person["positions"], [])
+        self.assertEqual(person["position_keys"], [])
+        self.assertEqual(person["photo"], "data:image/png;base64,abc")
+
+    def test_manual_people_merge_into_live_people_state_without_duplicating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "state.json")
+            data = store.load()
+            data["settings"]["demo_mode"] = False
+            data["settings"]["manual_people"] = [{"id": "walkon-1", "name": "Sam Walker"}]
+            store.save(data)
+            runtime = RuntimeService(store)
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual([p["name"] for p in state["people"] if p.get("manual")], ["Sam Walker"])
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual(len([p for p in state["people"] if p.get("manual")]), 1)
+            data = store.load()
+            data["settings"]["manual_people"] = []
+            store.save(data)
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual([p for p in state["people"] if p.get("manual")], [])
+
+    def test_manual_person_does_not_break_assignment_building(self):
+        state = {
+            "people": [RuntimeService._manual_people([{"id": "walkon-1", "name": "Sam Walker"}])[0]],
+            "mics": [{"id": "blue", "name": "Blue"}],
+        }
+        RuntimeService._apply_assignments(state, {"band::vox 1": "blue"})
+        self.assertEqual(state["mics"][0]["assignment"]["name"], "Unassigned")
 
     def test_position_key_maps_a_scheduled_person_to_named_mic(self):
         state = {

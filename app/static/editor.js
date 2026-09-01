@@ -24,7 +24,7 @@ const streamProviders=[
   {id:"restream",label:"Restream",apiPlaceholder:"Optional custom Restream status endpoint",credential:"Optional Restream bearer token",help:"Uses ChurchBoard's Restream integration when no custom endpoint is entered."}
 ];
 const defaultStreamSources=()=>streamProviders.map(item=>({id:item.id,provider:item.id,label:item.label,enabled:false,channel_url:"",api_url:"",live_keyword:"",api_token_configured:false}));
-let defaults={clock:{w:3,h:2},producer_qr:{w:4,h:4},board_navigation:{w:4,h:2,links:[]},service:{w:5,h:2},timing:{w:4,h:2},assignments:{w:7,h:6,team_ids:[],position_keys:[],position_labels:{},display_mode:"photos",card_grouping:"person",use_planning_center_icon:false,unassigned_media_title:"Icon"},slides:{w:6,h:4,show_notes:true,slide_mode:"image",slide_layout:"full",show_current:true,show_next:true,show_parts:true,show_slide_count:false},playlist:{w:6,h:7,slide_mode:"image",allow_remote_trigger:true,keyboard_control_default:false,density:"comfortable",auto_scroll:true,active_border_color:"#f5c400"},pp_controls:{w:5,h:3,allow_remote_trigger:true},pp_macros:{w:5,h:4,macro_mode:"all",macro_ids:[],allow_remote_trigger:true},notes:{w:4,h:2},sermon_notes:{w:5,h:5,item_title:"Message",field_name:"Vocals",font_scale:100},order:{w:5,h:3,display_mode:"current",limit:6,show_leader:false,show_mic:false,show_production_note:false,production_note_field:""},people:{w:4,h:4,team_ids:[],position_keys:[],position_labels:{}},spl:{w:4,h:3,green_max:75,orange_max:85,weighting:"A",response:"Fast"},prodmesh_rta:{w:5,h:4,display_mode:"both",metric:"fast_db"},behringer_faders:{w:6,h:5,strips:[{id:"main-lr",label:"MAIN LR",kind:"main",number:1}]},lighting:{w:5,h:4},controls:{w:4,h:2},restream:{w:5,h:4},livestreams:{w:5,h:4,sources:defaultStreamSources()},obs:{w:5,h:4},ndi:{w:6,h:4,source_name:""},webcam:{w:6,h:4,device_id:"",device_label:"",fit:"contain",mirror:false},propresenter_timers:{w:5,h:3},text:{w:4,h:2,text:"Custom text"},rich_text:{w:4,h:3,html:"<p>New note</p>"}};
+let defaults={clock:{w:3,h:2},producer_qr:{w:4,h:4},board_navigation:{w:4,h:2,links:[]},service:{w:5,h:2},timing:{w:4,h:2},assignments:{w:7,h:6,team_ids:[],position_keys:[],position_labels:{},person_assignment_map:{},display_mode:"photos",card_grouping:"person",use_planning_center_icon:false,unassigned_media_title:"Icon"},slides:{w:6,h:4,show_notes:true,slide_mode:"image",slide_layout:"full",show_current:true,show_next:true,show_parts:true,show_slide_count:false},playlist:{w:6,h:7,slide_mode:"image",allow_remote_trigger:true,keyboard_control_default:false,density:"comfortable",auto_scroll:true,active_border_color:"#f5c400"},pp_controls:{w:5,h:3,allow_remote_trigger:true},pp_macros:{w:5,h:4,macro_mode:"all",macro_ids:[],allow_remote_trigger:true},notes:{w:4,h:2},sermon_notes:{w:5,h:5,item_title:"Message",field_name:"Vocals",font_scale:100},order:{w:5,h:3,display_mode:"current",limit:6,show_leader:false,show_mic:false,show_production_note:false,production_note_field:""},people:{w:4,h:4,team_ids:[],position_keys:[],position_labels:{}},spl:{w:4,h:3,green_max:75,orange_max:85,weighting:"A",response:"Fast"},prodmesh_rta:{w:5,h:4,display_mode:"both",metric:"fast_db"},behringer_faders:{w:6,h:5,strips:[{id:"main-lr",label:"MAIN LR",kind:"main",number:1}]},lighting:{w:5,h:4},controls:{w:4,h:2},restream:{w:5,h:4},livestreams:{w:5,h:4,sources:defaultStreamSources()},obs:{w:5,h:4},ndi:{w:6,h:4,source_name:""},webcam:{w:6,h:4,device_id:"",device_label:"",fit:"contain",mirror:false},propresenter_timers:{w:5,h:3},text:{w:4,h:2,text:"Custom text"},rich_text:{w:4,h:3,html:"<p>New note</p>"}};
 let paletteCategories={"Service & timing":["clock","service","timing","order","controls"],"Planning Center":["assignments","people","sermon_notes"],"ProPresenter":["slides","playlist","pp_controls","pp_macros","notes","propresenter_timers"],"Proclaim":["proclaim_slides","proclaim_playlist","proclaim_controls","proclaim_timers"],"Audio & streaming":["spl","restream","livestreams","obs","ndi","webcam"],"Producer":["producer_qr"],"Content":["board_navigation","text","rich_text"]};
 
 function applyModulePalette(modules){
@@ -89,6 +89,45 @@ function renderAssignmentFilters(widget){
   const visibleTeams=selectedTeams.size?catalogTeams.filter(team=>selectedTeams.has(String(team.id))):catalogTeams;
   document.querySelector("#position-checkboxes").innerHTML=visibleTeams.map(team=>`<div class="group-label">${escapeHtml(team.name)}</div>${team.positions.map(position=>`<label class="check"><input type="checkbox" data-position-key="${escapeHtml(position.key)}" ${selectedPositions.has(position.key)?"checked":""}> ${escapeHtml(position.name)}</label>`).join("")}`).join("")||'<span class="hint">Select or load a team to see positions.</span>';
   document.querySelector("#position-order").innerHTML=(widget.settings.position_keys||[]).map((key,index)=>{const label=widget.settings.position_labels?.[key]||catalogPosition(key)||{name:positionNameFromKey(key),team_name:""};return`<div class="position-order-row"><span><strong>${index+1}</strong>${escapeHtml(label.name)}${label.team_name?` <em>${escapeHtml(label.team_name)}</em>`:""}</span><span><button type="button" data-position-up="${escapeHtml(key)}" ${index===0?"disabled":""} aria-label="Move ${escapeHtml(label.name)} up">↑</button><button type="button" data-position-down="${escapeHtml(key)}" ${index===(widget.settings.position_keys||[]).length-1?"disabled":""} aria-label="Move ${escapeHtml(label.name)} down">↓</button></span></div>`}).join("")||'<span class="hint">Select positions above to arrange them.</span>';
+  renderPersonAssignments(widget);
+}
+const personIdentity=person=>String(person.person_id||person.id||"");
+function eligibleAssignees(widget){
+  const teamIds=new Set((widget.settings.team_ids||[]).map(String)),keys=new Set(widget.settings.position_keys||[]),people=runtimeState.people||[];
+  const scheduled=people.filter(person=>!person.manual&&personIdentity(person)).filter(person=>{
+    const rows=person.positions&&person.positions.length?person.positions:[{key:person.position_key,team_id:person.team_id}];
+    return rows.some(row=>(!teamIds.size||teamIds.has(String(row.team_id||"")))&&(!keys.size||keys.has(String(row.key||""))));
+  });
+  return {scheduled,manual:people.filter(person=>person.manual&&personIdentity(person))};
+}
+function renderPersonAssignments(widget){
+  const root=document.querySelector("#mic-assignments"),section=document.querySelector("#mic-assignments-section");
+  if(!root)return;
+  const isAssignments=["assignments","mics"].includes(widget.type);
+  if(section)section.hidden=!isAssignments;
+  if(!isAssignments){root.innerHTML="";return}
+  const mics=runtimeState.mics||[],map=widget.settings.person_assignment_map||{};
+  const {scheduled,manual}=eligibleAssignees(widget);
+  const byId=new Map((runtimeState.people||[]).map(person=>[personIdentity(person),person]));
+  const listed=new Set([...scheduled,...manual].map(personIdentity));
+  const stragglers=Object.keys(map).filter(id=>!listed.has(id)&&byId.has(id)).map(id=>byId.get(id));
+  const rows=[...scheduled,...manual,...stragglers];
+  if(!mics.length){root.innerHTML='<p class="hint">No channels are configured yet — add wireless receivers or manual channels in the Mics module settings.</p>';return}
+  if(!rows.length){root.innerHTML='<p class="hint">No scheduled or manual people to assign. Pick teams/positions above, or add manual people in the Mics module settings.</p>';return}
+  const takenBy=new Map();Object.entries(map).forEach(([pid,slots])=>{if(slots?.mic)takenBy.set(slots.mic,String(pid));if(slots?.pack)takenBy.set(slots.pack,String(pid))});
+  const channelName=mic=>`${mic.name||"Channel"}${mic.manual?" · manual":Number(mic.channel)>0?` · Ch ${mic.channel}`:""}`;
+  const rowMarkup=person=>{
+    const pid=personIdentity(person),slots=map[pid]||{},stray=!listed.has(pid);
+    const slotSelect=slot=>{
+      const current=String(slots[slot]||"");
+      const choices=mics.filter(mic=>mic.id===current||takenBy.get(mic.id)===pid||!takenBy.has(mic.id)).map(mic=>`<option value="${escapeHtml(mic.id)}" ${mic.id===current?"selected":""}>${escapeHtml(channelName(mic))}</option>`).join("");
+      const gone=current&&!mics.some(mic=>mic.id===current)?`<option value="${escapeHtml(current)}" selected>Assigned channel (removed)</option>`:"";
+      return `<label class="pa-slot"><span>${slot==="mic"?"Mic":"Pack"}</span><select data-person-slot="${slot}" data-person-id="${escapeHtml(pid)}"><option value="">— None —</option>${gone}${choices}</select></label>`;
+    };
+    const meta=person.manual?"manual":stray?"not in current filter":[person.team_name,person.position].filter(Boolean).join(" · ");
+    return `<div class="person-assignment-row"><span class="pa-name">${escapeHtml(person.name||"Unnamed")}${meta?` <em>${escapeHtml(meta)}</em>`:""}</span>${slotSelect("mic")}${slotSelect("pack")}</div>`;
+  };
+  root.innerHTML=rows.map(rowMarkup).join("");
 }
 function renderLivestreamEditor(widget){const configured=new Map((widget.settings.sources||[]).map(item=>[item.id||item.provider,item]));document.querySelector("#livestream-source-editor").innerHTML=streamProviders.map(provider=>{const source=configured.get(provider.id)||{...provider,provider:provider.id,enabled:false,channel_url:"",api_url:"",live_keyword:"",api_token_configured:false},configuredToken=!!source.api_token_configured,apiUrl=source.api_url||source.status_url||"";return`<fieldset class="stream-source-settings" data-stream-provider="${provider.id}" data-token-configured="${configuredToken}"><legend><label class="check"><input type="checkbox" data-stream-field="enabled" ${source.enabled!==false&&configured.has(provider.id)?"checked":""}> ${provider.label}</label></legend><label>Display name<input data-stream-field="label" value="${escapeHtml(source.label||provider.label)}"></label>${provider.channelLabel?`<label class="stream-wide">${provider.channelLabel}<input data-stream-field="channel_url" type="url" value="${escapeHtml(source.channel_url||"")}" placeholder="${escapeHtml(provider.channelPlaceholder)}"></label>`:""}<label class="stream-wide">${provider.id==="restream"?"Custom API status URL":"API status URL"}<input data-stream-field="api_url" type="url" value="${escapeHtml(apiUrl)}" placeholder="${escapeHtml(provider.apiPlaceholder||"Optional vendor API endpoint")}"></label><label>${provider.credential}<input data-stream-field="api_token" type="password" autocomplete="new-password" placeholder="${configuredToken?"Credential saved — leave blank to keep":"Optional"}"></label><label>Live status value<input data-stream-field="live_keyword" value="${escapeHtml(source.live_keyword||"")}" placeholder="Optional, e.g. live or broadcasting"></label>${configuredToken?'<label class="check stream-wide"><input type="checkbox" data-stream-field="clear_api_token"> Remove saved API credential</label>':""}<p class="hint stream-provider-help">${escapeHtml(provider.help)}</p></fieldset>`}).join("")}
 function readLivestreamSources(){return[...document.querySelectorAll("[data-stream-provider]")].map(row=>{const field=name=>row.querySelector(`[data-stream-field="${name}"]`),token=field("api_token")?.value.trim()||"",clear=!!field("clear_api_token")?.checked,source={id:row.dataset.streamProvider,provider:row.dataset.streamProvider,enabled:field("enabled").checked,label:field("label").value.trim(),channel_url:field("channel_url")?.value.trim()||"",api_url:field("api_url")?.value.trim()||"",live_keyword:field("live_keyword").value.trim(),api_token_configured:row.dataset.tokenConfigured==="true"&&!clear};if(token)source.api_token=token;if(clear)source.clear_api_token=true;return source})}
@@ -114,6 +153,14 @@ document.querySelector("#refresh-webcam-sources").onclick=async()=>{const widget
 document.querySelector("#playlist-controls").addEventListener("input",event=>{if(event.target.name!=="playlist_active_border_color")return;const widget=find(selected);if(!widget||!["playlist","proclaim_playlist"].includes(widget.type))return;widget.settings.active_border_color=event.target.value;changed();render()});
 document.querySelector("#assignment-controls").addEventListener("change",event=>{
   const widget=find(selected);if(!widget)return;
+  if(event.target.matches("[data-person-slot]")){
+    const slot=event.target.dataset.personSlot,personId=event.target.dataset.personId,channelId=event.target.value,map={...(widget.settings.person_assignment_map||{})};
+    if(channelId)Object.keys(map).forEach(pid=>{const slots={...(map[pid]||{})};if(slots.mic===channelId)slots.mic="";if(slots.pack===channelId)slots.pack="";map[pid]=slots});
+    map[personId]={...(map[personId]||{}),[slot]:channelId};
+    Object.keys(map).forEach(pid=>{const slots=map[pid]||{};if(!slots.mic&&!slots.pack)delete map[pid]});
+    widget.settings.person_assignment_map=map;changed();renderPersonAssignments(widget);render();
+    return;
+  }
   if(event.target.matches("[data-team-id]")){widget.settings.team_ids=[...document.querySelectorAll("[data-team-id]:checked")].map(input=>input.dataset.teamId);const visible=new Set((widget.settings.team_ids.length?catalogTeams.filter(team=>widget.settings.team_ids.includes(String(team.id))):catalogTeams).flatMap(team=>team.positions.map(position=>position.key)));widget.settings.position_keys=(widget.settings.position_keys||[]).filter(key=>visible.has(key))}
   if(event.target.matches("[data-position-key]")){const checked=[...document.querySelectorAll("[data-position-key]:checked")].map(input=>input.dataset.positionKey),checkedSet=new Set(checked),existing=widget.settings.position_keys||[];widget.settings.position_keys=[...existing.filter(key=>checkedSet.has(key)),...checked.filter(key=>!existing.includes(key))]}
   widget.settings.positions=[];syncPositionLabels(widget);changed();renderAssignmentFilters(widget);render();

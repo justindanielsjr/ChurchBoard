@@ -43,6 +43,41 @@ class Dashboard(BaseModel):
         return value
 
 
+class ManualMicChannel(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A manual channel needs a name")
+        return value
+
+
+class ManualPerson(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=120)
+    photo: str = Field(default="", max_length=6_000_000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A manual person needs a name")
+        return value
+
+    @field_validator("photo")
+    @classmethod
+    def validate_photo(cls, value: str) -> str:
+        value = value.strip()
+        if value and not value.startswith("data:image/"):
+            raise ValueError("A manual person photo must be an embedded image")
+        return value
+
+
 class SettingsUpdate(BaseModel):
     organization_name: str = Field(default="My Church", max_length=120)
     timezone: str = Field(default="America/New_York", max_length=100)
@@ -63,5 +98,7 @@ class SettingsUpdate(BaseModel):
     intercom: dict[str, Any] = Field(default_factory=dict)
     server: dict[str, Any] = Field(default_factory=dict)
     position_mic_map: dict[str, str] = Field(default_factory=dict)
+    manual_mic_channels: list[ManualMicChannel] = Field(default_factory=list)
+    manual_people: list[ManualPerson] = Field(default_factory=list)
     manual_plan: dict[str, str] | None = None
     manual_service_time: dict[str, str] | None = None
