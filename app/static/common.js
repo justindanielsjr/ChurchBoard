@@ -134,7 +134,8 @@ const stagePlotEntries = (settings,state) => {
     return hit?String(hit.name||hit.receiver||""):"";
   };
   const entries=people.map(person=>{
-    const id=String(person.person_id||person.id||""),personKeys=(person.position_keys?.length?person.position_keys:[person.position_key]).filter(Boolean);
+    const id=String(person.person_id||person.id||"");
+    const personKeys=(Array.isArray(person.positions)&&person.positions.length?person.positions.map(position=>position.key):(person.position_keys?.length?person.position_keys:[person.position_key])).filter(Boolean);
     const positionKey=personKeys.find(key=>placements[key])||person.position_key||personKeys[0]||"";
     const override=placements["p:"+id]&&Number.isFinite(placements["p:"+id].x)?placements["p:"+id]:null;
     const anchorSpot=override||(placements[positionKey]&&Number.isFinite(placements[positionKey].x)?placements[positionKey]:null);

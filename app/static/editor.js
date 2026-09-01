@@ -79,11 +79,46 @@ function select(id){
   if(widget.type==="pp_macros")renderMacroPicker(widget)
   if(widget.type==="stage_plot")renderStagePlotEditor(widget)
 }
+function stagePlotKeyFor(entries,entry){
+  if(entry.pinned||!entry.positionKey)return "p:"+entry.id;
+  const sharers=entries.filter(other=>other.positionKey===entry.positionKey&&!other.pinned).length;
+  return sharers>1?"p:"+entry.id:entry.positionKey;
+}
+function setStagePlotPlacement(widget,id,x,y){
+  const entries=stagePlotEntries(widget.settings,runtimeState),entry=entries.find(item=>item.id===id);
+  if(!entry)return;
+  widget.settings.placements={...(widget.settings.placements||{}),[stagePlotKeyFor(entries,entry)]:{x,y}};
+}
+function removeStagePlotPlacement(widget,id){
+  const entries=stagePlotEntries(widget.settings,runtimeState),entry=entries.find(item=>item.id===id),placements={...(widget.settings.placements||{})};
+  if(!entry)return;
+  if(placements["p:"+id]!=null)delete placements["p:"+id];
+  else if(entry.positionKey&&placements[entry.positionKey]!=null)delete placements[entry.positionKey];
+  widget.settings.placements=placements;
+}
+let stagePlotDrag=null;
 function renderStagePlotEditor(widget){
   const root=document.querySelector("#stage-plot-placement");
   if(!root)return;
   const bg=widget.settings.background_image||"",aspect=Number(widget.settings.background_aspect)>0?Number(widget.settings.background_aspect):2;
-  root.innerHTML=`<div class="sp-editor"><div class="sp-editor-canvas" style="--sp-aspect:${aspect}">${bg?`<img class="sp-bg" src="${escapeHtml(bg)}" alt="">`:'<span class="sp-editor-empty">No background image</span>'}</div><div class="sp-editor-actions"><label class="button secondary sp-upload">${bg?"Replace image":"Upload background image"}<input type="file" data-stage-plot-bg accept="image/png,image/jpeg,image/webp"></label>${bg?'<button type="button" class="button secondary" data-stage-plot-bg-remove>Remove image</button>':""}</div><p class="hint">A stage photo or diagram. Markers sit relative to this image; it is letterboxed to keep its shape.</p></div>`;
+  const entries=typeof stagePlotEntries==="function"?stagePlotEntries(widget.settings,runtimeState):[];
+  const placed=entries.filter(entry=>entry.anchor),parked=entries.filter(entry=>!entry.anchor);
+  const puck=(entry,inCanvas)=>`<div class="sp-puck${entry.pinned?" pinned":""}" data-sp-puck="${escapeHtml(entry.id)}"${inCanvas?` style="left:${(Math.max(0,Math.min(1,entry.anchor.x))*100).toFixed(2)}%;top:${(Math.max(0,Math.min(1,entry.anchor.y))*100).toFixed(2)}%"`:""} title="${escapeHtml(entry.name)}"><span class="sp-puck-photo">${entry.photo?`<img src="${escapeHtml(entry.photo)}" alt="">`:initialsMarkup(entry.name)}</span><span class="sp-puck-name">${escapeHtml(entry.name)}</span></div>`;
+  root.innerHTML=`<div class="sp-editor"><div class="sp-editor-canvas" data-sp-canvas style="--sp-aspect:${aspect}">${bg?`<img class="sp-bg" src="${escapeHtml(bg)}" alt="">`:'<span class="sp-editor-empty">No background image</span>'}${placed.map(entry=>puck(entry,true)).join("")}</div><div class="sp-editor-actions"><label class="button secondary sp-upload">${bg?"Replace image":"Upload background image"}<input type="file" data-stage-plot-bg accept="image/png,image/jpeg,image/webp"></label>${bg?'<button type="button" class="button secondary" data-stage-plot-bg-remove>Remove image</button>':""}${Object.keys(widget.settings.placements||{}).length?'<button type="button" class="button secondary" data-stage-plot-clear>Clear placements</button>':""}</div>${parked.length?`<div class="sp-editor-parking"><span class="hint">Not placed — drag onto the stage:</span>${parked.map(entry=>puck(entry,false)).join("")}</div>`:""}<p class="hint">Drag a marker to place or move it; drag it off the stage to un-place. Two people on one position share a spot until you drag one to its own.</p></div>`;
+  root.querySelectorAll("[data-sp-puck]").forEach(el=>{
+    el.addEventListener("pointerdown",event=>{event.preventDefault();stagePlotDrag={id:el.dataset.spPuck,el};el.setPointerCapture?.(event.pointerId);el.classList.add("dragging")});
+    el.addEventListener("pointermove",event=>{if(!stagePlotDrag||stagePlotDrag.id!==el.dataset.spPuck)return;el.style.position="fixed";el.style.left=event.clientX+"px";el.style.top=event.clientY+"px";el.style.transform="translate(-50%,-50%)";el.style.zIndex="999"});
+    el.addEventListener("pointerup",event=>{
+      if(!stagePlotDrag||stagePlotDrag.id!==el.dataset.spPuck)return;
+      el.releasePointerCapture?.(event.pointerId);
+      const canvas=root.querySelector("[data-sp-canvas]"),rect=canvas.getBoundingClientRect(),id=stagePlotDrag.id;
+      stagePlotDrag=null;
+      const inside=event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+      if(inside)setStagePlotPlacement(widget,id,Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height)));
+      else removeStagePlotPlacement(widget,id);
+      changed();renderStagePlotEditor(widget);render();
+    });
+  });
 }
 document.querySelector("#stage-plot-placement").addEventListener("change",async event=>{
   if(!event.target.matches("[data-stage-plot-bg]"))return;
@@ -98,10 +133,9 @@ document.querySelector("#stage-plot-placement").addEventListener("change",async 
   }catch(error){document.querySelector("#save-status").textContent="Could not read that image."}
 });
 document.querySelector("#stage-plot-placement").addEventListener("click",event=>{
-  if(!event.target.closest("[data-stage-plot-bg-remove]"))return;
   const widget=find(selected);if(!widget)return;
-  widget.settings.background_image="";widget.settings.background_aspect=2;
-  changed();renderStagePlotEditor(widget);render();
+  if(event.target.closest("[data-stage-plot-bg-remove]")){widget.settings.background_image="";widget.settings.background_aspect=2;changed();renderStagePlotEditor(widget);render();return}
+  if(event.target.closest("[data-stage-plot-clear]")){widget.settings.placements={};changed();renderStagePlotEditor(widget);render()}
 });
 function renderMixerStripEditor(widget){const root=document.querySelector("[data-mixer-strip-editor]");root.innerHTML=(widget.settings.strips||[]).map((strip,index)=>`<div class="mixer-editor-row" data-mixer-row="${index}"><label>Label<input data-mixer-field="label" value="${escapeHtml(strip.label||"")}" placeholder="Vocal 1"></label><label>Strip type<select data-mixer-field="kind"><option value="channel" ${strip.kind==="channel"?"selected":""}>Input channel</option><option value="send" ${strip.kind==="send"?"selected":""}>Channel → bus / aux</option><option value="aux" ${strip.kind==="aux"?"selected":""}>Aux input</option><option value="bus" ${strip.kind==="bus"?"selected":""}>Bus / aux mix</option><option value="dca" ${strip.kind==="dca"?"selected":""}>DCA</option><option value="main" ${strip.kind==="main"?"selected":""}>Main (1 LR · 2 Mono)</option></select></label><label>${strip.kind==="send"?"Input channel":"Number"}<input data-mixer-field="number" type="number" min="1" max="64" value="${Number(strip.number)||1}"></label><label ${strip.kind==="send"?"":"hidden"}>Target bus / aux<input data-mixer-field="target_bus" type="number" min="1" max="16" value="${Number(strip.target_bus)||1}"></label><button class="icon-button danger" type="button" data-delete-mixer-strip aria-label="Delete fader">×</button></div>`).join("")||'<div class="empty-row">No faders configured</div>'}
 function renderOrderNoteChoices(widget){const root=document.querySelector("#order-production-note-fields"),names=[...new Set((runtimeState.service?.items||runtimeState.timing?.service_items||[]).flatMap(item=>(item.note_fields||[]).map(field=>field.name)).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),selected=(widget.settings.production_note_fields||[]).length?widget.settings.production_note_fields:(widget.settings.production_note_field?[widget.settings.production_note_field]:[]),colors=widget.settings.production_note_colors||{},palette=["#7048a8","#087f8c","#b23a48","#a65f00","#237a57","#b64b18"];for(const name of selected)if(!names.includes(name))names.push(name);root.innerHTML=names.map((name,index)=>`<label class="order-note-field-choice"><input type="checkbox" data-order-note-field="${escapeHtml(name)}" ${selected.includes(name)?"checked":""}><span>${escapeHtml(name)}</span><input type="color" data-order-note-color="${escapeHtml(name)}" value="${escapeHtml(colors[name]||palette[index%palette.length])}" aria-label="Color for ${escapeHtml(name)}"></label>`).join("")||'<p class="hint">No note fields were found in this service.</p>';root.hidden=!form.elements.show_production_note.checked}
@@ -188,7 +222,7 @@ document.querySelector("#assignment-controls").addEventListener("change",event=>
   }
   if(event.target.matches("[data-team-id]")){widget.settings.team_ids=[...document.querySelectorAll("[data-team-id]:checked")].map(input=>input.dataset.teamId);const visible=new Set((widget.settings.team_ids.length?catalogTeams.filter(team=>widget.settings.team_ids.includes(String(team.id))):catalogTeams).flatMap(team=>team.positions.map(position=>position.key)));widget.settings.position_keys=(widget.settings.position_keys||[]).filter(key=>visible.has(key))}
   if(event.target.matches("[data-position-key]")){const checked=[...document.querySelectorAll("[data-position-key]:checked")].map(input=>input.dataset.positionKey),checkedSet=new Set(checked),existing=widget.settings.position_keys||[];widget.settings.position_keys=[...existing.filter(key=>checkedSet.has(key)),...checked.filter(key=>!existing.includes(key))]}
-  widget.settings.positions=[];syncPositionLabels(widget);changed();renderAssignmentFilters(widget);render();
+  widget.settings.positions=[];syncPositionLabels(widget);changed();renderAssignmentFilters(widget);if(widget.type==="stage_plot")renderStagePlotEditor(widget);render();
 });
 document.querySelector("#position-order").addEventListener("click",event=>{const button=event.target.closest("[data-position-up],[data-position-down]"),widget=find(selected);if(!button||!widget)return;const key=button.dataset.positionUp||button.dataset.positionDown,positions=widget.settings.position_keys||[],index=positions.indexOf(key),target=button.dataset.positionUp!==undefined?index-1:index+1;if(index<0||target<0||target>=positions.length)return;[positions[index],positions[target]]=[positions[target],positions[index]];widget.settings.position_keys=[...positions];changed();renderAssignmentFilters(widget);render()});
 document.querySelector("#remove-widget").onclick=()=>{dashboard.widgets=dashboard.widgets.filter(widget=>widget.id!==selected);selected=null;form.hidden=true;document.querySelector("#inspector-empty").hidden=false;closeWidgetSettings();changed();render()};
