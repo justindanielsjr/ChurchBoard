@@ -201,7 +201,15 @@ rf: None, frequency, muted, rf_power, audio, online}`. Helpers `psm_rf_muted` (R
 4. Box-level replies (no channel index, e.g. `DEVICE_NAME`) don't match `FRAME`; not relied on.
 - Tests: `test_core.py` `PSM1000Tests` + `PSM1000StatusTests` (fake-socket fan-out, stereo + L/R pair). Suite 210.
 
-### Phase 5 — `stage_plot` widget — design locked (2026-09-01), not started
+### Phase 5 — `stage_plot` widget — ✅ code complete (2026-09-01), browser-verified, on branch
+`phase-5-stage-plot` (stacked on `phase-4-psm1000`). Commits `703640c` 5a · `fd73f0f` 5b · `49ed3db` 5c ·
+`7d1ecf3` 5d. Built exactly to the locked design below. Key files: `builtin.py` (manifest),
+`common.js` (`stagePlotEntries` / `stagePlotMarkup` / `stagePlotRfChip` + dispatch), `editor.js`
+(`renderStagePlotEditor` + drag handlers + `stagePlotKeyFor`/`setStagePlotPlacement`/`removeStagePlotPlacement`;
+`isPositionWidget` extended; `#assignment-grouping-label`/`-hint` now hidden for non-assignments — also fixes
+the `people` widget), `editor.html` (`#stage-plot-controls`), `style.css` (`.stage-plot` / `.sp-*`).
+Gotcha found in build: a person's position keys must come from `person.positions[].key` (what PCO/demo
+people carry), not `person.position_keys`/`position_key` — mirrors `filteredPeople`. Locked design follows:
 **Purpose:** musicians finding their spot on stage. Readability first; NOT a live-telemetry surface (that lives
 in the mics widget). New widget type `stage_plot`.
 
