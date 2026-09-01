@@ -135,7 +135,10 @@ window wants a rehearsal.
 
 ### Phase 4 — Shure PSM1000 integration — ✅ code complete on branch `phase-4-psm1000` (stacked on
 `phase-3-axient`). All of 4a–4d done, browser-verified. Only open item: the `PSM_AUDIO_FULL_SCALE`
-calibration (see quirk 3), same Sunday-rehearsal capture as the Axient meter windows.
+calibration (see quirk 3), same Sunday-rehearsal capture as the Axient meter windows —
+**capture plan + tools are ready: `tools/meter-calibration-capture.md`, `tools/axient_probe.py`,
+`tools/psm_probe.py`**. It sets all three placeholder constants (Axient RF window, Axient audio window,
+`PSM_AUDIO_FULL_SCALE`) in one pass; after it, three one-line edits in `shure.py` close out Phases 3 & 4.
 - **4d** (assignment wiring + card): almost nothing was needed here because 4c already made pack cards
   first-class `state["mics"]` entries with stable ids — `assignmentEntries` resolves `person_assignment_map`'s
   `pack` slot by `mic.id`, so networked packs slot in exactly like manual channels. Changes: `common.js` —
