@@ -622,6 +622,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 200)
         self.assertEqual(deleted.json()["shure"]["mics"], [])
 
+    def test_axient_receiver_model_round_trips_through_settings(self):
+        settings = self.client.get("/api/settings").json()
+        settings["shure"].update({"enabled": True, "mics": [{
+            "id": "adx-vox", "name": "Lead Vox", "host": "192.168.1.80", "port": 2202, "channel": 1, "model": "axient",
+        }]})
+        saved = self.client.put("/api/settings", json=settings)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["shure"]["mics"][0]["model"], "axient")
+
     def test_manual_mic_channels_round_trip_and_drop_blank_rows(self):
         settings = self.client.get("/api/settings").json()
         settings["manual_mic_channels"] = [{"id": "gtr-1", "name": "Acoustic Guitar"}]

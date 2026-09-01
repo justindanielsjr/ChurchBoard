@@ -86,14 +86,37 @@ This scope went through several iterations before landing here — don't rebuild
   transmitters into the same `state.mics` list and the pack slot lights up automatically. Legacy paths
   (`position_mic_map`, demo, standalone) have no `slot` on their equipment → single unlabelled gear line, unchanged.
 
-### Phase 3 — Shure Axient Digital integration — not started
-Extend `app/modules/shure.py` (currently only handles QLX-D/ULX-D/SLX-D battery field `BATT_BARS` and a generic
-`GET`/`REP`/`SAMPLE` frame parser over TCP 2202) with an Axient branch: different battery field (`BATT_CHARGE`,
-a direct percentage, not the 0–5 bar scale), Axient's documented extra fields (antenna/frequency diversity). Also
-needs a new `<option>` in the receiver-model dropdown in the setup UI (currently only offers "Shure QLX-D / ULX-D"
-and "Shure SLX-D"). Protocol is officially published by Shure (not reverse-engineered) at pubs.shure.com/command-
-strings. Needs real AD4Q/AD600 hardware on the bench to nail down exact field values — can't be fully verified from
-docs alone.
+### Phase 3 — Shure Axient Digital integration — ✅ code complete, browser-verified, NOT committed. Needs
+AD4Q/AD600 bench time to confirm the meter-scaling windows before it's fully trusted. Built from the official
+published spec (www.shure.com/en-US/docs/commandstrings/AD4 — "AD4" is the current URL slug; `pubs.shure.com`
+redirects there). Same GET/REP/SAMPLE parser and TCP 2202 as the QLX/ULX/SLX path — Axient just takes a branch.
+
+- **Model plumbing** (`module-settings.js`): new **"Shure Axient Digital"** `<option>` in the per-mic Receiver
+  dropdown (`data-mic-field="manufacturer"` → `shure-axient`). `hydrateModuleMics` maps stored `model:"axient"`
+  → that option; `collectWireless` maps it back to `model:"axient"` in `shure.mics`. `shure` settings is a
+  free-form `dict[str,Any]` in `models.py` — no schema change needed. Toggle label now reads
+  "…/ SLX-D / Axient Digital" (still the one `shure.enabled` switch).
+- **Telemetry branch** (`shure.py` `_receiver`): when `receiver_model == "axient"` the per-channel GET set becomes
+  `CHAN_NAME`, `TX_BATT_CHARGE_PERCENT`, `FREQUENCY`, `TX_MODEL`, `FD_MODE`, `ANTENNA_STATUS` (vs `BATT_BARS` /
+  `TX_TYPE` on the legacy path); `battery_key`/`tx_key` also drive the read-loop break condition. New helpers:
+  `battery_charge_percent()` (direct 0–100, 255→None), `format_frequency()` (7-digit kHz string → "578.350 MHz"),
+  `axient_meter_percent(value, floor, ceiling)` (0–120 byte, actual dB = value−120, mapped onto 0–100% across a
+  dB window), `axient_antenna_label()` ("BR"→"Ant A+B", "XX"→""). `tx_type` stores the raw `TX_MODEL` token
+  (`ADX2`, `UNKNOWN`, …) so `transmitter_active()` keeps working unchanged.
+- **Axient `SAMPLE … ALL` frame** is 9 fields for a standard channel:
+  `qual audBitmap audPeak audRms rfAntStats rfBitmapA rfRssiA rfBitmapB rfRssiB`. We take `rf` = max of the two
+  `rfRssi` bytes through a −100..−40 dBm window, `audio` = `audRms` through a −50..0 dBFS window, `antenna` from
+  `rfAntStats`. **Those two dB windows are first-guess** — flagged in the `axient_meter_percent` docstring — and
+  are the one thing that genuinely needs hardware. Quadversity / FD-C SAMPLE variants (11/13/19 fields) are not
+  parsed yet; the `len(parts) >= 9` guard just means rf/audio stay at their last value for those, everything else
+  still updates.
+- **Card display** (`common.js`): the `technical-meta` line on the mic card now joins
+  `[frequency, tx_type, antenna, diversity]` (was just `frequency`+`tx_type`) → e.g.
+  `578.350 MHz · ADX2 · Ant A+B · FD-C`. Legacy mics have no `antenna`/`diversity` keys so their line is
+  unchanged. This is the only frontend-render change; browser-smoke-tested it plus the settings round-trip.
+- Tests: `test_core.py` `ShureTests` (charge %, frequency/antenna label helpers, receiver keeps `model:"axient"`)
+  + `ShureStatusTests.test_axient_receiver_reports_charge_percent_frequency_and_diversity` (full fake-socket
+  parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
 ### Phase 4 — Shure PSM1000 integration — not started
 Same command-string protocol family and TCP port as Axient (P10T transmitter is officially documented in the same

@@ -26,6 +26,43 @@ def battery_percent(value: str) -> int | None:
     return round(bars / 5 * 100)
 
 
+def battery_charge_percent(value: str) -> int | None:
+    """Axient Digital reports TX_BATT_CHARGE_PERCENT as a direct 0-100 value (255 = unknown)."""
+    try:
+        charge = int(value.strip())
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return charge if 0 <= charge <= 100 else None
+
+
+def format_frequency(value: str) -> str:
+    """Axient FREQUENCY is a 7-digit kHz string, e.g. '0578350' -> '578.350 MHz'."""
+    try:
+        khz = int(value.strip())
+    except (AttributeError, TypeError, ValueError):
+        return str(value or "").strip()
+    return f"{khz / 1000:.3f} MHz" if khz else ""
+
+
+def axient_meter_percent(value: str, floor: int, ceiling: int) -> int:
+    """Map an Axient 0-120 meter byte (actual dB = value - 120) onto 0-100% across [floor, ceiling] dB.
+
+    The floor/ceiling windows the callers pass are first-guess and need AD4Q/AD600 bench
+    confirmation before they can be trusted for anything beyond a rough bar.
+    """
+    try:
+        actual = int(value.strip()) - 120
+    except (AttributeError, TypeError, ValueError):
+        return 0
+    return max(0, min(100, round((actual - floor) / (ceiling - floor) * 100)))
+
+
+def axient_antenna_label(value: str) -> str:
+    """ANTENNA_STATUS / rfAntStats: one char per antenna A-D, X=off, R=red, B=blue."""
+    active = [letter for letter, flag in zip("ABCD", (value or "").strip()) if flag and flag != "X"]
+    return f"Ant {'+'.join(active)}" if active else ""
+
+
 def transmitter_active(state: dict[str, Any]) -> bool:
     tx_type = str(state.get("tx_type") or "").strip().upper()
     identified = bool(tx_type and tx_type not in {"UNKN", "UNKNOWN", "NONE", "OFF", "N/A"})
@@ -72,12 +109,17 @@ class ShureClient:
         channel_configs = receiver.get("channel_configs") or []
         channel_numbers = sorted({int(item.get("channel") or 1) for item in channel_configs}) if channel_configs else list(range(1, int(receiver.get("channels", 2)) + 1))
         states = {index: {"name": f"Channel {index}", "battery_percent": 0, "rf": 0, "audio": 0, "online": False, "receiver_online": False, "errors": [], "_battery_valid": False} for index in channel_numbers}
+        receiver_model = str(receiver.get("model") or "qlx-ulx").strip().lower()
+        axient = receiver_model == "axient"
+        battery_key, tx_key = ("TX_BATT_CHARGE_PERCENT", "TX_MODEL") if axient else ("BATT_BARS", "TX_TYPE")
+        query_keys = ("CHAN_NAME", battery_key, "FREQUENCY", tx_key) + (("FD_MODE", "ANTENNA_STATUS") if axient else ())
+        meter_rate = "00100" if axient else "100"
         try:
             reader, writer = await asyncio.wait_for(asyncio.open_connection(str(receiver.get("host", "")), int(receiver.get("port", 2202))), timeout=2)
             for channel in states:
-                for key in ("CHAN_NAME", "BATT_BARS", "FREQUENCY", "TX_TYPE"):
+                for key in query_keys:
                     writer.write(f"< GET {channel} {key} >".encode())
-                writer.write(f"< SET {channel} METER_RATE 100 >".encode())
+                writer.write(f"< SET {channel} METER_RATE {meter_rate} >".encode())
             await writer.drain()
             raw = b""
             deadline = asyncio.get_running_loop().time() + 1.25
@@ -91,7 +133,7 @@ class ShureClient:
                         break
                     raw += chunk
                     seen = {(int(match.group(1)), match.group(2)) for match in FRAME.finditer(raw.decode(errors="ignore"))}
-                    if all((channel, "BATT_BARS") in seen and (channel, "TX_TYPE") in seen and (channel, "ALL") in seen for channel in states):
+                    if all((channel, battery_key) in seen and (channel, tx_key) in seen and (channel, "ALL") in seen for channel in states):
                         break
             except asyncio.TimeoutError:
                 pass
@@ -105,22 +147,28 @@ class ShureClient:
                 state = states[channel]
                 state["receiver_online"] = True
                 if key == "CHAN_NAME": state["name"] = value.replace("_", " ").strip()
-                elif key == "BATT_BARS":
-                    battery = battery_percent(value)
+                elif key == battery_key:
+                    battery = battery_charge_percent(value) if axient else battery_percent(value)
                     state["_battery_valid"] = battery is not None
                     state["battery_percent"] = battery if battery is not None else 0
-                elif key == "FREQUENCY": state["frequency"] = value
-                elif key == "TX_TYPE": state["tx_type"] = value
+                elif key == "FREQUENCY": state["frequency"] = format_frequency(value) if axient else value
+                elif key == tx_key: state["tx_type"] = value
+                elif key == "FD_MODE": state["diversity"] = "" if value.upper() == "OFF" else value
+                elif key == "ANTENNA_STATUS": state["antenna"] = axient_antenna_label(value)
                 elif key == "ALL":
                     parts = value.split()
-                    if len(parts) >= 3:
+                    if axient and len(parts) >= 9:
+                        # SAMPLE x ALL qual audBitmap audPeak audRms rfAntStats rfBitmapA rfRssiA rfBitmapB rfRssiB
+                        state["antenna"] = axient_antenna_label(parts[4]) or state.get("antenna", "")
+                        state["rf"] = max(axient_meter_percent(parts[6], -100, -40), axient_meter_percent(parts[8], -100, -40))
+                        state["audio"] = axient_meter_percent(parts[3], -50, 0)
+                    elif not axient and len(parts) >= 3:
                         state["rf"], state["audio"] = percent(parts[-2], 115), percent(parts[-1], 50)
         except (OSError, asyncio.TimeoutError) as exc:
             for state in states.values():
                 state["errors"] = [str(exc) or "Receiver unavailable"]
         output = []
         receiver_id = str(receiver.get("id") or receiver.get("host") or "receiver")
-        receiver_model = str(receiver.get("model") or "qlx-ulx").strip().lower()
         for channel, state in states.items():
             state["online"] = transmitter_active(state)
             state.pop("_battery_valid", None)

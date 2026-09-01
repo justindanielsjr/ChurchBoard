@@ -14,7 +14,15 @@ from app.modules.planning_center import PlanningCenterClient, calculate_timing, 
 from app.modules.livekit import HostedIntercomServer, access_token
 from app.modules.ndi import NDIRuntime
 from app.modules.media_cache import PlanningCenterMediaCache
-from app.modules.shure import ShureClient, battery_percent, percent, transmitter_active
+from app.modules.shure import (
+    ShureClient,
+    axient_antenna_label,
+    battery_charge_percent,
+    battery_percent,
+    format_frequency,
+    percent,
+    transmitter_active,
+)
 from app.modules.sennheiser import parse_ssc_response, ssc_request
 from app.modules.propresenter import ProPresenterClient
 from app.modules.restream import RestreamClient
@@ -650,6 +658,27 @@ class ShureTests(unittest.TestCase):
         self.assertEqual(receiver["port"], 2202)
         self.assertEqual(receiver["model"], "slxd")
 
+    def test_axient_mic_uses_the_shure_tcp_receiver_and_keeps_its_model(self):
+        client = ShureClient({"enabled": True, "mics": [
+            {"id": "adx-1", "name": "Lead Vox", "host": "192.168.1.80", "channel": 1, "model": "axient"},
+        ]})
+        receiver = client._configured_receivers()[0]
+        self.assertEqual(receiver["port"], 2202)
+        self.assertEqual(receiver["model"], "axient")
+
+    def test_axient_battery_charge_is_a_direct_percentage(self):
+        self.assertEqual(battery_charge_percent("088"), 88)
+        self.assertEqual(battery_charge_percent("100"), 100)
+        self.assertIsNone(battery_charge_percent("255"))
+        self.assertIsNone(battery_charge_percent("UNKN"))
+
+    def test_axient_frequency_and_antenna_labels(self):
+        self.assertEqual(format_frequency("0578350"), "578.350 MHz")
+        self.assertEqual(format_frequency(""), "")
+        self.assertEqual(axient_antenna_label("BR"), "Ant A+B")
+        self.assertEqual(axient_antenna_label("BRXB"), "Ant A+B+D")
+        self.assertEqual(axient_antenna_label("XX"), "")
+
 
 class ShureStatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_tx_and_battery_sentinel_report_transmitter_off(self):
@@ -684,6 +713,49 @@ class ShureStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(mic["receiver_online"])
         self.assertEqual(mic["battery_percent"], 0)
         self.assertEqual(mic["errors"], ["Transmitter off"])
+
+    async def test_axient_receiver_reports_charge_percent_frequency_and_diversity(self):
+        class Reader:
+            def __init__(self):
+                self.done = False
+
+            async def read(self, _size):
+                if self.done:
+                    return b""
+                self.done = True
+                return (
+                    b"< REP 1 CHAN_NAME {Lead Vox} >< REP 1 TX_BATT_CHARGE_PERCENT 087 >"
+                    b"< REP 1 FREQUENCY 0578350 >< REP 1 TX_MODEL ADX2 >< REP 1 FD_MODE FD-C >"
+                    b"< SAMPLE 1 ALL 005 031 090 095 BR 31 070 31 060 >"
+                )
+
+        class Writer:
+            def write(self, _data):
+                pass
+
+            async def drain(self):
+                pass
+
+            def close(self):
+                pass
+
+            async def wait_closed(self):
+                pass
+
+        client = ShureClient({"enabled": True, "mics": [
+            {"id": "adx-vox", "name": "Vox", "host": "192.0.2.5", "channel": 1, "model": "axient"},
+        ]})
+        receiver = client._configured_receivers()[0]
+        with patch("app.modules.shure.asyncio.open_connection", AsyncMock(return_value=(Reader(), Writer()))):
+            mic = (await client._receiver(receiver))[0]
+        self.assertTrue(mic["online"])
+        self.assertEqual(mic["battery_percent"], 87)
+        self.assertEqual(mic["frequency"], "578.350 MHz")
+        self.assertEqual(mic["tx_type"], "ADX2")
+        self.assertEqual(mic["diversity"], "FD-C")
+        self.assertEqual(mic["antenna"], "Ant A+B")
+        self.assertGreater(mic["rf"], 0)
+        self.assertEqual(mic["errors"], [])
 
 
 class SennheiserTests(unittest.TestCase):
