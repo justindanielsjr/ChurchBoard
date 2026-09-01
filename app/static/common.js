@@ -126,12 +126,11 @@ const filteredPeople = (settings,state) => {
 const normalized = value => String(value||"").trim().toLocaleLowerCase();
 const stagePlotEntries = (settings,state) => {
   const people=filteredPeople(settings,state),mics=state.mics||[],placements=settings.placements||{};
-  const micNameFor=person=>{
+  const micFor=person=>{
     const ids=new Set([String(person.person_id||""),String(person.id||"")].filter(Boolean));
-    const hit=mics.find(mic=>ids.has(String(mic.assignment?.person_id||""))||ids.has(String(mic.assignment?.id||"")))
+    return mics.find(mic=>ids.has(String(mic.assignment?.person_id||""))||ids.has(String(mic.assignment?.id||"")))
       ||mics.find(mic=>normalized(mic.assignment?.name)===normalized(person.name))
-      ||mics.find(mic=>person.position_key&&normalized(mic.assignment?.position_key)===normalized(person.position_key));
-    return hit?String(hit.name||hit.receiver||""):"";
+      ||mics.find(mic=>person.position_key&&normalized(mic.assignment?.position_key)===normalized(person.position_key))||null;
   };
   const entries=people.map(person=>{
     const id=String(person.person_id||person.id||"");
@@ -139,8 +138,12 @@ const stagePlotEntries = (settings,state) => {
     const positionKey=personKeys.find(key=>placements[key])||person.position_key||personKeys[0]||"";
     const override=placements["p:"+id]&&Number.isFinite(placements["p:"+id].x)?placements["p:"+id]:null;
     const anchorSpot=override||(placements[positionKey]&&Number.isFinite(placements[positionKey].x)?placements[positionKey]:null);
+    const mic=micFor(person);
     return {id,name:person.name||"Unassigned",photo:person.photo||"",team:person.team_name||"",
-      subtitle:[person.position,person.team_name].filter(Boolean).join(" · "),mic:micNameFor(person),
+      subtitle:[person.position,person.team_name].filter(Boolean).join(" · "),
+      mic:mic?String(mic.name||mic.receiver||""):"",
+      battery:mic&&Number.isFinite(Number(mic.battery_percent))?Number(mic.battery_percent):null,
+      muted:!!(mic&&mic.muted),micOnline:!!(mic&&mic.online),isPack:!!(mic&&mic.pack),
       positionKey,pinned:!!override,anchor:anchorSpot?{x:Number(anchorSpot.x),y:Number(anchorSpot.y)}:null};
   });
   const groups=new Map();
@@ -153,19 +156,26 @@ const stagePlotEntries = (settings,state) => {
   });
   return entries;
 };
-const stagePlotMarkerInner = entry => {
+const stagePlotRfChip = entry => {
+  if(entry.muted)return `<span class="sp-rf muted">MUTED</span>`;
+  if(entry.isPack)return entry.micOnline?`<span class="sp-rf">PACK</span>`:`<span class="sp-rf off">PACK OFF</span>`;
+  if(entry.battery==null)return entry.mic?`<span class="sp-rf off">MIC OFF</span>`:"";
+  return `<span class="sp-rf ${entry.battery<15?"low":entry.battery<30?"mid":"ok"}">${entry.battery}%</span>`;
+};
+const stagePlotMarkerInner = (entry,showRf) => {
   const photo=entry.photo?`<img src="${escapeHtml(entry.photo)}" alt="">`:initialsMarkup(entry.name);
-  return `<span class="sp-photo">${photo}</span><span class="sp-name">${escapeHtml(entry.name)}</span>${entry.mic?`<span class="sp-mic">${escapeHtml(entry.mic)}</span>`:""}`;
+  const rf=showRf?stagePlotRfChip(entry):"";
+  return `<span class="sp-photo">${photo}${rf}</span><span class="sp-name">${escapeHtml(entry.name)}</span>${entry.mic?`<span class="sp-mic">${escapeHtml(entry.mic)}</span>`:""}`;
 };
 const stagePlotMarkup = (settings,state) => {
   const entries=stagePlotEntries(settings,state);
   if(!entries.length)return `<div class="empty">Choose teams or positions in this widget’s settings</div>`;
-  const aspect=Number(settings.background_aspect)>0?Number(settings.background_aspect):2;
+  const aspect=Number(settings.background_aspect)>0?Number(settings.background_aspect):2,showRf=!!settings.show_rf;
   const bg=settings.background_image?`<img class="sp-bg" src="${escapeHtml(settings.background_image)}" alt="">`:"";
   const placed=entries.filter(entry=>entry.anchor),parked=entries.filter(entry=>!entry.anchor);
-  const markers=placed.map(entry=>`<div class="sp-marker${entry.pinned?" pinned":""}" style="left:${Math.max(0,Math.min(100,entry.anchor.x*100)).toFixed(2)}%;top:${Math.max(0,Math.min(100,entry.anchor.y*100)).toFixed(2)}%">${stagePlotMarkerInner(entry)}</div>`).join("");
-  const strip=parked.length?`<div class="sp-parking" aria-label="People without a placed spot">${parked.map(entry=>`<div class="sp-marker parked">${stagePlotMarkerInner(entry)}</div>`).join("")}</div>`:"";
-  return `<div class="stage-plot${settings.show_rf?" show-rf":""}"><div class="sp-canvas${settings.background_image?" has-bg":""}" style="--sp-aspect:${aspect}">${bg}${markers}${strip}</div></div>`;
+  const markers=placed.map(entry=>`<div class="sp-marker${entry.pinned?" pinned":""}" style="left:${Math.max(0,Math.min(100,entry.anchor.x*100)).toFixed(2)}%;top:${Math.max(0,Math.min(100,entry.anchor.y*100)).toFixed(2)}%">${stagePlotMarkerInner(entry,showRf)}</div>`).join("");
+  const strip=parked.length?`<div class="sp-parking"><span class="sp-parking-label">Not placed</span>${parked.map(entry=>`<div class="sp-marker parked">${stagePlotMarkerInner(entry,showRf)}</div>`).join("")}</div>`:"";
+  return `<div class="stage-plot${showRf?" show-rf":""}"><div class="sp-canvas${settings.background_image?" has-bg":""}" style="--sp-aspect:${aspect}">${bg}${markers}${strip}</div></div>`;
 };
 const presentationDisplayTitle = pp => {
   const planningTitle=String(pp.planning_center_item_title||(pp.service_item_is_pco?pp.service_item_title:"")||"").trim(),propresenterTitle=String(pp.title||pp.presentation?.name||pp.presentation?.id?.name||"").trim();
