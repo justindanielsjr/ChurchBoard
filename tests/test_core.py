@@ -920,6 +920,36 @@ class RuntimeAssignmentTests(unittest.TestCase):
             state = asyncio.run(runtime.refresh(force=True))
             self.assertEqual([mic for mic in state["mics"] if mic.get("manual")], [])
 
+    def test_psm1000_packs_merge_into_live_mic_state(self):
+        cards = [{
+            "id": "iem2", "name": "IEM 2", "pack": True, "battery_percent": None, "rf": None,
+            "audio": 0, "frequency": "477.850 MHz", "muted": False, "online": True,
+            "receiver_online": True, "errors": [], "channel": 1, "model": "psm1000",
+            "receiver": "10.0.0.1", "default_photo": "",
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            store = ConfigStore(Path(directory) / "state.json")
+            data = store.load()
+            data["settings"]["demo_mode"] = False
+            data["settings"]["shure"] = {"enabled": False, "receivers": [], "mics": []}
+            data["settings"]["iem"] = {"enabled": True, "packs": [
+                {"id": "iem2", "label": "IEM 2", "host": "10.0.0.1", "transmitter": 1, "side": "left"},
+            ]}
+            store.save(data)
+            runtime = RuntimeService(store)
+            with patch("app.modules.shure.PSM1000Client.status", AsyncMock(return_value=cards)):
+                state = asyncio.run(runtime.refresh(force=True))
+                packs = [mic for mic in state["mics"] if mic.get("pack")]
+                self.assertEqual([pack["name"] for pack in packs], ["IEM 2"])
+                self.assertIsNone(packs[0]["battery_percent"])
+                state = asyncio.run(runtime.refresh(force=True))
+                self.assertEqual(len([mic for mic in state["mics"] if mic.get("pack")]), 1)
+            data = store.load()
+            data["settings"]["iem"] = {"enabled": False, "packs": []}
+            store.save(data)
+            state = asyncio.run(runtime.refresh(force=True))
+            self.assertEqual([mic for mic in state["mics"] if mic.get("pack")], [])
+
     def test_manual_people_have_a_planning_center_compatible_shape(self):
         people = RuntimeService._manual_people([
             {"id": "walkon-1", "name": "Sam Walker", "photo": "data:image/png;base64,abc"},

@@ -22,7 +22,7 @@ from app.modules.planning_center import (
 )
 from app.modules.propresenter import ProPresenterClient
 from app.modules.proclaim import ProclaimClient
-from app.modules.shure import ShureClient
+from app.modules.shure import PSM1000Client, ShureClient
 from app.modules.sennheiser import SennheiserClient
 from app.modules.spl_reports import SPLReportStore
 from app.modules.osm import OSMListener
@@ -45,7 +45,7 @@ class RuntimeService:
         self.state: dict[str, Any] = self.demo_state()
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
-        self._last_refresh = {"planning_center": 0.0, "planning_center_detail": 0.0, "planning_center_live": 0.0, "propresenter": 0.0, "proclaim": 0.0, "shure": 0.0, "sennheiser": 0.0, "prodmesh_host": 0.0, "prodmesh_rta": 0.0, "behringer": 0.0, "restream": 0.0, "obs": 0.0, "streams": 0.0}
+        self._last_refresh = {"planning_center": 0.0, "planning_center_detail": 0.0, "planning_center_live": 0.0, "propresenter": 0.0, "proclaim": 0.0, "shure": 0.0, "sennheiser": 0.0, "iem": 0.0, "prodmesh_host": 0.0, "prodmesh_rta": 0.0, "behringer": 0.0, "restream": 0.0, "obs": 0.0, "streams": 0.0}
         self._service_control: dict[str, Any] = {"active": False}
         self._pp_live_candidate = ""
         self._pp_live_candidate_since = 0.0
@@ -489,17 +489,23 @@ class RuntimeService:
             self._rehearsal_clock = {}
         shure = ShureClient(config.get("shure", {}))
         sennheiser = SennheiserClient(config.get("sennheiser", {}))
+        psm = PSM1000Client(config.get("iem", {}))
         shure_due = clock - self._last_refresh["shure"] >= float(config.get("shure", {}).get("refresh_seconds", 0.5))
         sennheiser_due = clock - self._last_refresh["sennheiser"] >= float(config.get("sennheiser", {}).get("refresh_seconds", 0.5))
-        if (shure.configured and (force or shure_due)) or (sennheiser.configured and (force or sennheiser_due)):
-            shure_status, sennheiser_status = await asyncio.gather(
+        psm_due = clock - self._last_refresh["iem"] >= float(config.get("iem", {}).get("refresh_seconds", 0.5))
+        if (shure.configured and (force or shure_due)) or (sennheiser.configured and (force or sennheiser_due)) or (psm.configured and (force or psm_due)):
+            shure_status, sennheiser_status, psm_status = await asyncio.gather(
                 shure.status() if shure.configured else asyncio.sleep(0, result=[]),
                 sennheiser.status() if sennheiser.configured else asyncio.sleep(0, result=[]),
+                psm.status() if psm.configured else asyncio.sleep(0, result=[]),
             )
-            next_state["mics"] = shure_status + sennheiser_status
+            # PSM1000 P10T packs ride in the same list as mics (pack: True, no
+            # battery); the assignment widget resolves them into the PACK slot.
+            next_state["mics"] = shure_status + sennheiser_status + psm_status
             self._last_refresh["shure"] = clock
             self._last_refresh["sennheiser"] = clock
-        elif not shure.configured and not sennheiser.configured:
+            self._last_refresh["iem"] = clock
+        elif not shure.configured and not sennheiser.configured and not psm.configured:
             # Runtime starts with demonstration content so the first launch is
             # useful. Once demo mode is off, never carry those sample mics into
             # a real Planning Center plan that has no wireless configuration.

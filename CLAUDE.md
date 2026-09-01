@@ -134,8 +134,15 @@ window wants a rehearsal.
   parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
 ### Phase 4 — Shure PSM1000 integration — 🔨 in progress on branch `phase-4-psm1000` (stacked on
-`phase-3-axient`). **4a + 4b done.** 4c (runtime merge into `state["mics"]`), 4d (assignment dropdown + card
-PACK line) still to do.
+`phase-3-axient`). **4a + 4b + 4c done.** Only 4d (assignment dropdown + card PACK line) left.
+- **4c** (runtime merge): `runtime.py` imports `PSM1000Client`, adds an `"iem"` key to `_last_refresh`, and
+  folds `PSM1000Client(config.get("iem", {}))` into the existing shure/sennheiser `asyncio.gather` block
+  (`~line 490`): `next_state["mics"] = shure_status + sennheiser_status + psm_status`, with `psm_due` /
+  `self._last_refresh["iem"]` and the no-config `elif` guard extended with `and not psm.configured`. Pack cards
+  carry `pack: True` (not `manual`), so `_fold_in_manual_roster`'s `manual`-strip leaves them alone. Demo mode
+  returns before this block, so packs never show in demo. End-to-end verified against the live racks — 4 pack
+  cards land in `/api/runtime` `state["mics"]` with real frequencies, `battery_percent: None`, `online: True`.
+  Test: `RuntimeAssignmentTests.test_psm1000_packs_merge_into_live_mic_state`.
 - **4b** (settings + UI): `settings.iem = {"enabled": bool, "packs": [ {id,label,host,port,transmitter,side} ]}`
   — an opaque `dict[str,Any]` field on `SettingsUpdate` (mirrors `shure`/`sennheiser`; no per-row pydantic
   model). `module-settings.js`: an `iem.enabled` toggle + a "PSM1000 in-ear packs" section in the mics module
