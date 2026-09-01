@@ -115,7 +115,7 @@ function renderPersonAssignments(widget){
   if(!mics.length){root.innerHTML='<p class="hint">No channels are configured yet — add wireless receivers or manual channels in the Mics module settings.</p>';return}
   if(!rows.length){root.innerHTML='<p class="hint">No scheduled or manual people to assign. Pick teams/positions above, or add manual people in the Mics module settings.</p>';return}
   const takenBy=new Map();Object.entries(map).forEach(([pid,slots])=>{if(slots?.mic)takenBy.set(slots.mic,String(pid));if(slots?.pack)takenBy.set(slots.pack,String(pid))});
-  const channelName=mic=>`${mic.name||"Channel"}${mic.manual?" · manual":Number(mic.channel)>0?` · Ch ${mic.channel}`:""}`;
+  const channelName=mic=>`${mic.name||"Channel"}${mic.manual?" · manual":mic.pack?" · pack":Number(mic.channel)>0?` · Ch ${mic.channel}`:""}`;
   const rowMarkup=person=>{
     const pid=personIdentity(person),slots=map[pid]||{},stray=!listed.has(pid);
     const slotSelect=slot=>{

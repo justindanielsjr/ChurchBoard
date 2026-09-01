@@ -133,8 +133,21 @@ window wants a rehearsal.
   + `ShureStatusTests.test_axient_receiver_reports_charge_percent_frequency_and_diversity` (full fake-socket
   parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
-### Phase 4 — Shure PSM1000 integration — 🔨 in progress on branch `phase-4-psm1000` (stacked on
-`phase-3-axient`). **4a + 4b + 4c done.** Only 4d (assignment dropdown + card PACK line) left.
+### Phase 4 — Shure PSM1000 integration — ✅ code complete on branch `phase-4-psm1000` (stacked on
+`phase-3-axient`). All of 4a–4d done, browser-verified. Only open item: the `PSM_AUDIO_FULL_SCALE`
+calibration (see quirk 3), same Sunday-rehearsal capture as the Axient meter windows.
+- **4d** (assignment wiring + card): almost nothing was needed here because 4c already made pack cards
+  first-class `state["mics"]` entries with stable ids — `assignmentEntries` resolves `person_assignment_map`'s
+  `pack` slot by `mic.id`, so networked packs slot in exactly like manual channels. Changes: `common.js` —
+  `micIsActive`/`micHealth`/`micMeters`/`micCardMarkup` get a `mic.pack` branch (packs have
+  `battery_percent: null` → without it JS `Number(null)=0` renders every pack "critical" with a bogus BAT
+  meter). Pack cards: health = `online?(muted?"low":"healthy"):"critical"`; meters show AUD only; status is
+  `MUTED`/`LIVE`/`OFFLINE`; the PACK gear line shows the label + ` · MUTED`; `technical-meta` line gains
+  `mic.rf_power` (→ `477.850 MHz · 50 mW`); `itemLabel` drops the `· Ch N` suffix for packs. `editor.js` —
+  one token in `channelName` (`mic.pack?" · pack":`) so the Mic/Pack dropdowns label pack channels; the
+  dropdowns already iterate `runtimeState.mics` so packs appeared automatically. No new tests (pure render);
+  verified with synthetic `micCardMarkup` calls in the browser (combined mic+pack, standalone pack, muted,
+  offline) + no console errors on display/editor.
 - **4c** (runtime merge): `runtime.py` imports `PSM1000Client`, adds an `"iem"` key to `_last_refresh`, and
   folds `PSM1000Client(config.get("iem", {}))` into the existing shure/sennheiser `asyncio.gather` block
   (`~line 490`): `next_state["mics"] = shure_status + sennheiser_status + psm_status`, with `psm_due` /
@@ -197,6 +210,20 @@ just consumes ProdCom's own local API (documented WebSocket at `/api/v1/ws` and 
 optional pre-shared key auth, no auth by default) rather than reimplementing speech-to-text. Plan is to run ProdCom
 itself (paid, macOS/iOS only) somewhere in the production network and write a small module that subscribes to its
 transcript stream — similar shape/difficulty to the Shure modules, not a from-scratch ASR build.
+
+### Later, no urgency — Shure SBC240 networked charger monitoring
+6× SBC240 2-bay networked chargers (12 bays = the 12 Axient channels; whole ADX1/ADX2 transmitters are docked,
+not bare batteries). Not on the network yet — the church is considering it. **Only the Axient side** has
+networked chargers; the PSM1000 P10R has none, so this does nothing for the IEM battery blind spot. Value is
+modest and additive: pre-call charge readiness while packs are docked (the AD4Q shows nothing until a
+transmitter is powered *and* linked), time-to-full, and charge-fault detection. Battery health % / cycle count
+are already available from the AD4Q for *linked* transmitters (Phase 3), so the charger only adds those for
+docked ones. Because whole transmitters are docked, each bay reports the ADX device ID — the same ID the AD4Q
+reports when linked — so bay↔channel correlation is possible. Two possible shapes: (a) fold "Charging · 92%"
+into the existing mic cards when a channel's transmitter is docked (higher value, needs device-ID matching),
+or (b) a standalone 12-tile bay-grid readiness widget (simpler, no correlation). **Do first:** confirm the
+SBC240 exposes per-bay battery over the command-strings port (TCP 2202) and not only via WWB's discovery
+layer. Priority: after Phase 5.
 
 ## Working style notes
 - Patches/diffs against upstream drift fast (upstream ChurchBoard is actively developed) — if working from a fresh
