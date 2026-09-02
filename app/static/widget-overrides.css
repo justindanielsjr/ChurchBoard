@@ -128,13 +128,21 @@
 
 .clock-value {
   max-width: 92% !important;
-  font-size: clamp(1.3rem, min(15cqw, 35cqh), 7rem) !important;
-  line-height: 1.1 !important;
+  font-size: clamp(1.2rem, min(14cqw, 30cqh), 6.5rem) !important;
+  line-height: 1.08 !important;
+}
+
+.clock-date {
+  margin-top: clamp(4px, 2.4cqh, 13px) !important;
 }
 
 .service-name {
-  font-size: clamp(1.1rem, min(11cqw, 39cqh), 5.5rem) !important;
+  font-size: clamp(1rem, min(10cqw, 32cqh), 5rem) !important;
   line-height: 1.12 !important;
+}
+
+.service-meta {
+  margin-top: clamp(5px, 2.6cqh, 14px) !important;
 }
 
 .timing-value {

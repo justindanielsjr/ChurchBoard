@@ -315,7 +315,7 @@ body.moving-widget,body.moving-widget *{cursor:grabbing!important}
 .sp-parking .sp-marker.parked .sp-name{background:none;padding:0;text-shadow:none;font-size:.78rem}
 .sp-parking .sp-marker.parked .sp-mic,.sp-parking .sp-marker.parked .sp-rf{display:none}
 .sp-editor{display:grid;gap:8px;margin-top:6px}
-.sp-editor-canvas{position:relative;width:100%;max-width:420px;aspect-ratio:var(--sp-aspect,2);border:1px solid var(--line);border-radius:8px;background:#0a0e15;overflow:hidden;display:grid;place-items:center}
+.sp-editor-canvas{position:relative;width:100%;max-width:640px;aspect-ratio:var(--sp-aspect,2);border:1px solid var(--line);border-radius:8px;background:#0a0e15;overflow:hidden;display:grid;place-items:center}
 .sp-editor-canvas .sp-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .sp-editor-empty{color:var(--muted);font-size:.8rem}
 .sp-editor-actions{display:flex;gap:8px;flex-wrap:wrap}
