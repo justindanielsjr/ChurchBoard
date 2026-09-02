@@ -68,7 +68,7 @@ const positionNameFromKey = key => String(key||"").split("::").at(-1).replace(/\
 const assignmentEntries = (settings,state) => {
   const selectedKeys=[...new Set(settings.position_keys||[])],labels=settings.position_labels||{},teamIds=new Set((settings.team_ids||[]).map(String)),people=state.people||[],mics=state.mics||[],groupByPerson=settings.card_grouping!=="position";
   if(state.use_planning_center_for_mics===false)return mics;
-  const peopleByKey=new Map();people.forEach(person=>{const keys=person.position_keys?.length?person.position_keys:[person.position_key];keys.filter(Boolean).forEach(key=>peopleByKey.set(key,person))});
+  const peopleByKey=new Map();people.forEach(person=>{const keys=person.position_keys?.length?person.position_keys:[person.position_key];keys.filter(Boolean).forEach(key=>{const list=peopleByKey.get(key)||[];list.push(person);peopleByKey.set(key,list)})});
   const micsByKey=new Map();mics.filter(mic=>mic.assignment?.position_key).forEach(mic=>{const key=mic.assignment.position_key,existing=micsByKey.get(key)||[];existing.push(mic);micsByKey.set(key,existing)});
   const identityOf=person=>String(person.person_id||person.id||""),micById=new Map(mics.map(mic=>[mic.id,mic]));
   const personMap=settings.person_assignment_map||{},peopleByIdentity=new Map(people.map(person=>[identityOf(person),person]).filter(([id])=>id));
@@ -79,21 +79,24 @@ const assignmentEntries = (settings,state) => {
   if(!keys.length&&!assignedPeople.length)return mics.filter(mic=>!teamIds.size||teamIds.has(String(mic.assignment?.team_id||"")));
   const entries=[],seenPeople=new Set();
   for(const key of keys){
-    const meta=labels[key]||{},person=peopleByKey.get(key),positionName=meta.name||person?.position||positionNameFromKey(key),teamId=meta.team_id||person?.team_id||String(key).split("::")[0],teamName=meta.team_name||person?.team_name||"";
-    if(person){
-      const identity=String(person.person_id||person.id||key);if(groupByPerson&&seenPeople.has(identity))continue;if(groupByPerson)seenPeople.add(identity);
-      const personKeys=groupByPerson?(person.position_keys?.length?person.position_keys:[person.position_key]).filter(positionKey=>keys.includes(positionKey)):[key];
-      const positions=personKeys.map(positionKey=>{const positionMeta=labels[positionKey]||{},scheduled=(person.positions||[]).find(item=>item.key===positionKey)||{};return positionMeta.name||scheduled.name||positionNameFromKey(positionKey)});
-      const equipment=[...new Map([...personKeys.flatMap(positionKey=>micsByKey.get(positionKey)||[]),...(mappedEquipment.get(identity)||[])].map(mic=>[mic.id,mic])).values()];
-      const primary=equipment[0],assignment={...person,position:positions.join(", "),position_key:key,position_keys:personKeys,team_id:teamId,team_name:teamName,name:person.name||"Unassigned",photo:person.photo||""};
-      entries.push(primary?{...primary,assignment,equipment}:{id:`person-${identity}-${key}`,name:"No mic",receiver:"No mic assigned",channel:"—",battery_percent:0,rf:0,audio:0,online:false,errors:["No microphone assigned"],placeholder:true,assignment,equipment:[]});
+    const meta=labels[key]||{},peopleHere=peopleByKey.get(key)||[],firstPerson=peopleHere[0],positionName=meta.name||firstPerson?.position||positionNameFromKey(key),teamId=meta.team_id||firstPerson?.team_id||String(key).split("::")[0],teamName=meta.team_name||firstPerson?.team_name||"";
+    if(peopleHere.length){
+      for(const person of peopleHere){
+        const identity=String(person.person_id||person.id||key);if(groupByPerson&&seenPeople.has(identity))continue;if(groupByPerson)seenPeople.add(identity);
+        const personKeys=groupByPerson?(person.position_keys?.length?person.position_keys:[person.position_key]).filter(positionKey=>keys.includes(positionKey)):[key];
+        const positions=personKeys.map(positionKey=>{const positionMeta=labels[positionKey]||{},scheduled=(person.positions||[]).find(item=>item.key===positionKey)||{};return positionMeta.name||scheduled.name||positionNameFromKey(positionKey)});
+        const equipment=[...new Map([...personKeys.flatMap(positionKey=>micsByKey.get(positionKey)||[]),...(mappedEquipment.get(identity)||[])].map(mic=>[mic.id,mic])).values()];
+        const primary=equipment[0],assignment={...person,position:positions.join(", "),position_key:key,position_keys:personKeys,team_id:teamId,team_name:teamName,name:person.name||"Unassigned",photo:person.photo||""};
+        entries.push(primary?{...primary,assignment,equipment}:{id:`person-${identity}-${key}`,name:"No mic",receiver:"No mic assigned",channel:"—",battery_percent:0,rf:0,audio:0,online:false,errors:["No microphone assigned"],placeholder:true,assignment,equipment:[]});
+      }
       continue;
     }
     const matchingMic=(micsByKey.get(key)||[])[0]||mics.find(mic=>String(mic.assignment?.position||"").trim().toLocaleLowerCase()===String(positionName).trim().toLocaleLowerCase()),existing=matchingMic?.assignment||{},assignment={...meta,...existing,position:positionName,position_key:key,team_id:teamId,team_name:teamName,name:"Unassigned",photo:""};
     entries.push(matchingMic?{...matchingMic,assignment,equipment:[matchingMic]}:{id:`position-${key}`,name:"No mic",receiver:"No mic assigned",channel:"—",battery_percent:0,rf:0,audio:0,online:false,errors:["No microphone assigned"],placeholder:true,assignment,equipment:[]});
   }
-  // A person with a mic and/or pack assigned always gets a card, ahead of unfilled
-  // position placeholders. A person with nothing assigned is never shown.
+  // Off-schedule people who have gear assigned but match no filtered position are
+  // appended after the ordered position slots (a scheduled person — even the 2nd
+  // on a shared position — is emitted in order by the loop above).
   const emitted=new Set(entries.map(entry=>String(entry.assignment?.person_id||entry.assignment?.id||"")));
   const personEntries=[];
   for(const personId of Object.keys(personMap)){
@@ -104,7 +107,7 @@ const assignmentEntries = (settings,state) => {
     const assignment={...person,position:person.position||(person.manual?"Manual":""),position_key:person.position_key||"",team_id:person.team_id||"",team_name:person.team_name||"",name:person.name||"Unassigned",photo:person.photo||""};
     personEntries.push({...equipment[0],assignment,equipment});
   }
-  return [...personEntries,...entries];
+  return [...entries,...personEntries];
 };
 const filteredPeople = (settings,state) => {
   const people=state.people||[],selectedKeys=[...new Set(settings.position_keys||[])],teamIds=new Set((settings.team_ids||[]).map(String));
