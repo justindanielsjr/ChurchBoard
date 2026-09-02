@@ -337,9 +337,6 @@ body.moving-widget,body.moving-widget *{cursor:grabbing!important}
 .sp-canvas{width:min(100cqw,calc(100cqh * var(--sp-aspect,2)));height:auto;max-width:100%;container-type:inline-size}
 /* Bug 1 (pre-existing upstream): the no-photo name placeholder overflows its own box for longer names */
 .talent-photo-placeholder .person-name-mark{font-size:clamp(.62rem,4.4cqw,1.4rem)!important;max-width:calc(100% - 6px);padding:clamp(3px,1.4cqw,9px)!important;overflow-wrap:break-word;text-wrap:pretty}
-/* Bug 4 (pre-existing upstream): flex-shrink compresses these below their line box, then their own
-   overflow:hidden clips the glyphs while fitWidgetText's parent-scrollHeight check reads "fits". */
+/* Bug 4 (pre-existing upstream): stop these flex items being compressed below their line box (their own
+   overflow:hidden then clips glyphs). The oversized font itself is capped in widget-overrides.css. */
 .clock-value,.service-name,.timing-value{flex-shrink:0}
-.clock-value{line-height:1.1!important}
-.service-name{line-height:1.14!important}
-.timing-value{line-height:1.1!important}

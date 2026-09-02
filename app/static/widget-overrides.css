@@ -128,15 +128,18 @@
 
 .clock-value {
   max-width: 92% !important;
-  font-size: clamp(2rem, min(17cqw, 60cqh), 10rem) !important;
+  font-size: clamp(1.3rem, min(15cqw, 35cqh), 7rem) !important;
+  line-height: 1.1 !important;
 }
 
 .service-name {
-  font-size: clamp(1.4rem, min(12cqw, 58cqh), 7rem) !important;
+  font-size: clamp(1.1rem, min(11cqw, 39cqh), 5.5rem) !important;
+  line-height: 1.12 !important;
 }
 
 .timing-value {
-  font-size: clamp(1rem, min(11cqw, 48cqh), 5rem) !important;
+  font-size: clamp(.9rem, min(10cqw, 34cqh), 4rem) !important;
+  line-height: 1.12 !important;
 }
 
 .pp-timer strong {
