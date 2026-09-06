@@ -28,6 +28,12 @@ Treat this file as the source of truth for project scope and decisions. Update i
 
 ## Status
 
+**Phases 1–5 are all done and merged to `main` (`d01143d`, pushed to `origin` 2026-09-06), including the
+Shure meter calibration from real hardware. Nothing outstanding in the build.** The remaining work is
+operational: stand ChurchBoard up on the target Mac (see "dedicated Mac display viewer" below) and the
+optional follow-ups further down. The old per-phase branches are now redundant. Capture logs for the meter
+calibration live outside the repo at `C:\Users\GTMEDIA\Churchboard-captures\2026-09-0*\`.
+
 ### Phase 1 — Rich-text Notes widget — ✅ DONE, merged
 A `rich_text` widget type ("Notes" in the Content palette category). Editor: small toolbar (bold/italic/underline/
 bulleted/numbered list) over a `contenteditable` div, saved as sanitized HTML in `widget.settings.html`. Display:
@@ -39,10 +45,10 @@ Purely typed-in content, not sourced from Planning Center at all (the existing `
 PCO note fields but strips all formatting down to plain text — deliberately left alone since notes are typed directly
 in ChurchBoard here, not in Planning Center).
 
-### Phase 2 — Assignment/pool redesign — ✅ DONE, browser-verified, committed (branch `phase-2-assignments`,
-commit `8a4ac02`; not pushed/merged). Built in small increments: 2a manual mic channels, 2b manual people list,
-2c person-ID-keyed mapping, 2d combined mic+pack card. Two bug-fix rounds + a card-typography pass along the way.
-This scope went through several iterations before landing here — don't rebuild earlier discarded versions of it.
+### Phase 2 — Assignment/pool redesign — ✅ DONE, merged to `main` (`d01143d`, 2026-09-06).
+Built in small increments: 2a manual mic channels, 2b manual people list, 2c person-ID-keyed mapping,
+2d combined mic+pack card. Two bug-fix rounds + a card-typography pass along the way. This scope went through
+several iterations before landing here — don't rebuild earlier discarded versions of it.
 
 - **Do NOT build a "team opt-in checkbox" pool mechanism.** Earlier discussion explored letting dashboard widgets
   pull from a Planning Center team's full roster regardless of whether they're scheduled for a given service. This
@@ -86,10 +92,10 @@ This scope went through several iterations before landing here — don't rebuild
   transmitters into the same `state.mics` list and the pack slot lights up automatically. Legacy paths
   (`position_mic_map`, demo, standalone) have no `slot` on their equipment → single unlabelled gear line, unchanged.
 
-### Phase 3 — Shure Axient Digital integration — ✅ code complete + browser-verified, committed on branch
-`phase-3-axient` (stacked on `phase-2-assignments`). Built from the official published spec
-(www.shure.com/en-US/docs/commandstrings/AD4 — "AD4" is the current URL slug; `pubs.shure.com` redirects there).
-Same GET/REP/SAMPLE parser and TCP 2202 as the QLX/ULX/SLX path — Axient just takes a branch.
+### Phase 3 — Shure Axient Digital integration — ✅ DONE, merged to `main` (`d01143d`, 2026-09-06).
+Built from the official published spec (www.shure.com/en-US/docs/commandstrings/AD4 — "AD4" is the current URL
+slug; `pubs.shure.com` redirects there). Same GET/REP/SAMPLE parser and TCP 2202 as the QLX/ULX/SLX path —
+Axient just takes a branch.
 
 **Hardware:** 3× AD4Q on the production LAN — Shure Control IPs `10.100.3.217` (AD4Q-1, 4× ADX2),
 `.218` (AD4Q-2, 4× ADX2), `.219` (AD4Q-3, 4× ADX1). `10.100.3.216` is an AD600 **Spectrum Manager** (no
@@ -101,10 +107,14 @@ window, with Shure's dB conversions annotated inline) — that is the calibratio
 spelled and shaped exactly as the spec says — `TX_BATT_CHARGE_PERCENT`, `TX_MODEL` (`UNKNOWN` when no TX),
 `FD_MODE` (`OFF`), `ANTENNA_STATUS` (`XX` when no TX), the 9-field `SAMPLE x ALL`, `FREQUENCY` as `0604550`.
 No-signal floors: RSSI raw ≈ 9–12 (≈ −108…−111 dBm), `audRms` raw `033` (−87 dBFS), `audPeak` raw `005`
-(−115 dBFS), `CHAN_QUALITY` `255`. **Still outstanding:** transmitters powered on with real mic levels at
-service gain staging — needed only to set the RF (−100..−40 dBm) and audio (−50..0 dBFS) windows in
-`axient_meter_percent`. RF range can be had any time someone powers a TX and walks it near→far; the audio
-window wants a rehearsal.
+(−115 dBFS), `CHAN_QUALITY` `255`.
+
+**Meter windows calibrated against the real racks & merged (`d01143d`, 2026-09-06):** `axient_meter_percent`
+now takes **RF `-90..-45` dBm** (a mic walk with HH1/BP2 through 5 positions put the real range at −43 dBm on
+the antennas to −80 dBm behind a block wall) and **audio `-50..-6` dBFS** (a Sunday rehearsal put a silent
+open mic at ~−80 dBFS `audRms` and the loudest sung `audRms` at −3..−6, so the old ceiling of 0 never let the
+bar fill). Capture logs + analysis: `C:\Users\GTMEDIA\Churchboard-captures\2026-09-02-partA\` (RF) and
+`2026-09-06-partB-axient-audio\` (audio).
 
 - **Model plumbing** (`module-settings.js`): new **"Shure Axient Digital"** `<option>` in the per-mic Receiver
   dropdown (`data-mic-field="manufacturer"` → `shure-axient`). `hydrateModuleMics` maps stored `model:"axient"`
@@ -120,11 +130,10 @@ window wants a rehearsal.
   (`ADX2`, `UNKNOWN`, …) so `transmitter_active()` keeps working unchanged.
 - **Axient `SAMPLE … ALL` frame** is 9 fields for a standard channel:
   `qual audBitmap audPeak audRms rfAntStats rfBitmapA rfRssiA rfBitmapB rfRssiB`. We take `rf` = max of the two
-  `rfRssi` bytes through a −100..−40 dBm window, `audio` = `audRms` through a −50..0 dBFS window, `antenna` from
-  `rfAntStats`. **Those two dB windows are first-guess** — flagged in the `axient_meter_percent` docstring — and
-  are the one thing that genuinely needs hardware. Quadversity / FD-C SAMPLE variants (11/13/19 fields) are not
-  parsed yet; the `len(parts) >= 9` guard just means rf/audio stay at their last value for those, everything else
-  still updates.
+  `rfRssi` bytes through a **−90..−45 dBm** window, `audio` = `audRms` through a **−50..−6 dBFS** window,
+  `antenna` from `rfAntStats`. Both windows are now bench-calibrated (see above). Quadversity / FD-C SAMPLE
+  variants (11/13/19 fields) are not parsed yet; the `len(parts) >= 9` guard just means rf/audio stay at their
+  last value for those, everything else still updates.
 - **Card display** (`common.js`): the `technical-meta` line on the mic card now joins
   `[frequency, tx_type, antenna, diversity]` (was just `frequency`+`tx_type`) → e.g.
   `578.350 MHz · ADX2 · Ant A+B · FD-C`. Legacy mics have no `antenna`/`diversity` keys so their line is
@@ -133,12 +142,17 @@ window wants a rehearsal.
   + `ShureStatusTests.test_axient_receiver_reports_charge_percent_frequency_and_diversity` (full fake-socket
   parse); `test_api.py` settings round-trip. Suite is 204 tests, same 7 pre-existing Windows failures.
 
-### Phase 4 — Shure PSM1000 integration — ✅ code complete on branch `phase-4-psm1000` (stacked on
-`phase-3-axient`). All of 4a–4d done, browser-verified. Only open item: the `PSM_AUDIO_FULL_SCALE`
-calibration (see quirk 3), same Sunday-rehearsal capture as the Axient meter windows —
-**capture plan + tools are ready: `tools/meter-calibration-capture.md`, `tools/axient_probe.py`,
-`tools/psm_probe.py`**. It sets all three placeholder constants (Axient RF window, Axient audio window,
-`PSM_AUDIO_FULL_SCALE`) in one pass; after it, three one-line edits in `shure.py` close out Phases 3 & 4.
+### Phase 4 — Shure PSM1000 integration — ✅ DONE, merged to `main` (`d01143d`, 2026-09-06).
+All of 4a–4d + the audio calibration. **`AUDIO_IN_LVL_L/_R` turned out to be a LINEAR-AMPLITUDE reading**
+(not the ~0–2500 range quirk 3 first guessed): full scale (0 dBFS) ≈ 400000. `PSM_AUDIO_FULL_SCALE = 400000`
+and `psm_audio_percent` now does `dBFS = 20*math.log10(raw / FS)` windowed onto −48..0. Calibrated with an
+A&H dLive signal-generator sweep into `.221` tx1 (5 points 0..−40 dBFS read off the console aux meter, fit
+within 0.2 dB); both dual-mono legs share the one constant. Data:
+`C:\Users\GTMEDIA\Churchboard-captures\2026-09-02-partC2-psm\PART-C2-notes-DEFINITIVE.md`.
+**dLive gotcha:** a stray **Dyn8** dynamics processor on the source aux applies silent, level-dependent gain
+reduction — it ruined the first PSM capture. Check the source bus for inserts before any meter capture.
+`tools/meter-calibration-capture.md` + `tools/axient_probe.py` + `tools/psm_probe.py` are the capture kit,
+kept for re-calibration.
 - **4d** (assignment wiring + card): almost nothing was needed here because 4c already made pack cards
   first-class `state["mics"]` entries with stable ids — `assignmentEntries` resolves `person_assignment_map`'s
   `pack` slot by `mic.id`, so networked packs slot in exactly like manual channels. Changes: `common.js` —
@@ -195,15 +209,16 @@ rf: None, frequency, muted, rf_power, audio, online}`. Helpers `psm_rf_muted` (R
    which writes bare `< … >`. `PSM1000Client` appends `\r\n` to every write.
 2. `AUDIO_TX_MODE` reads `3` (stereo) on **every** transmitter including the dual-mono ones — it's not a mode
    they set, so it's useless for validating `side`. Not queried.
-3. `AUDIO_IN_LVL_L/_R` full scale is **undocumented**; live values run ~0–1900. Working model:
-   `dBFS = value/50 − 50` (0–2500 → −50..0 dBFS), i.e. `PSM_AUDIO_FULL_SCALE = 2500`. **UNCONFIRMED** — retune
-   that one constant from the same Sunday rehearsal capture as the Axient meter windows.
+3. `AUDIO_IN_LVL_L/_R` is a **linear-amplitude** reading (undocumented), not a dB value. Full scale (0 dBFS)
+   ≈ 400000; convert with `dBFS = 20*log10(raw / PSM_AUDIO_FULL_SCALE)`, `PSM_AUDIO_FULL_SCALE = 400000`.
+   Bench-calibrated 2026-09-06 (`d01143d`) — see Phase 4 above. (The old `dBFS = value/50 − 50` guess was the
+   wrong shape: raw maxes near 400k, not ~2500.)
 4. Box-level replies (no channel index, e.g. `DEVICE_NAME`) don't match `FRAME`; not relied on.
 - Tests: `test_core.py` `PSM1000Tests` + `PSM1000StatusTests` (fake-socket fan-out, stereo + L/R pair). Suite 210.
 
-### Phase 5 — `stage_plot` widget — ✅ code complete (2026-09-01), browser-verified, on branch
-`phase-5-stage-plot` (stacked on `phase-4-psm1000`). Commits `703640c` 5a · `fd73f0f` 5b · `49ed3db` 5c ·
-`7d1ecf3` 5d. Built exactly to the locked design below. Key files: `builtin.py` (manifest),
+### Phase 5 — `stage_plot` widget — ✅ DONE, merged to `main` (`d01143d`, 2026-09-06).
+Commits `703640c` 5a · `fd73f0f` 5b · `49ed3db` 5c · `7d1ecf3` 5d. Built exactly to the locked design below.
+Key files: `builtin.py` (manifest),
 `common.js` (`stagePlotEntries` / `stagePlotMarkup` / `stagePlotRfChip` + dispatch), `editor.js`
 (`renderStagePlotEditor` + drag handlers + `stagePlotKeyFor`/`setStagePlotPlacement`/`removeStagePlotPlacement`;
 `isPositionWidget` extended; `#assignment-grouping-label`/`-hint` now hidden for non-assignments — also fixes
