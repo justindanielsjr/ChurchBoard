@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 from typing import Any
 
@@ -47,8 +48,10 @@ def format_frequency(value: str) -> str:
 def axient_meter_percent(value: str, floor: int, ceiling: int) -> int:
     """Map an Axient 0-120 meter byte (actual dB = value - 120) onto 0-100% across [floor, ceiling] dB.
 
-    The floor/ceiling windows the callers pass are first-guess and need AD4Q/AD600 bench
-    confirmation before they can be trusted for anything beyond a rough bar.
+    Caller windows are bench-calibrated against the production AD4Qs: RF -90..-45 dBm
+    (real range on a mic walk was -43 on the antennas to -80 behind a block wall; no-TX
+    floor -105..-111), audio -50..-6 dBFS (silent mic idles ~-80, loudest sung audRms
+    tops -3..-6). Captures 2026-09-02 (RF) and 2026-09-06 rehearsal (audio).
     """
     try:
         actual = int(value.strip()) - 120
@@ -160,8 +163,8 @@ class ShureClient:
                     if axient and len(parts) >= 9:
                         # SAMPLE x ALL qual audBitmap audPeak audRms rfAntStats rfBitmapA rfRssiA rfBitmapB rfRssiB
                         state["antenna"] = axient_antenna_label(parts[4]) or state.get("antenna", "")
-                        state["rf"] = max(axient_meter_percent(parts[6], -100, -40), axient_meter_percent(parts[8], -100, -40))
-                        state["audio"] = axient_meter_percent(parts[3], -50, 0)
+                        state["rf"] = max(axient_meter_percent(parts[6], -90, -45), axient_meter_percent(parts[8], -90, -45))
+                        state["audio"] = axient_meter_percent(parts[3], -50, -6)
                     elif not axient and len(parts) >= 3:
                         state["rf"], state["audio"] = percent(parts[-2], 115), percent(parts[-1], 50)
         except (OSError, asyncio.TimeoutError) as exc:
@@ -209,20 +212,27 @@ class ShureClient:
 
 PSM_QUERY_KEYS = ("CHAN_NAME", "FREQUENCY", "RF_MUTE", "RF_TX_LVL")
 
-# AUDIO_IN_LVL_L/_R full-scale. The published command-strings page does not
-# document the range; live P10T values run ~0-1900, consistent with
-# dBFS = value / 50 - 50 (0..2500 spanning -50..0 dBFS). UNCONFIRMED -- confirm
-# at a rehearsal with real programme levels and retune this one constant.
-PSM_AUDIO_FULL_SCALE = 2500
+# AUDIO_IN_LVL_L/_R is a linear-amplitude reading whose full scale (0 dBFS) is
+# PSM_AUDIO_FULL_SCALE; convert with dBFS = 20*log10(raw / FS). Bench-calibrated
+# 2026-09-02 against an A&H dLive signal generator into a P10T (.221 tx1): 5-point
+# sweep 0..-40 dBFS read off the console aux meter, fit to within 0.2 dB. Silence
+# idles ~300 (~-62 dBFS). The published command-strings page does not document this.
+PSM_AUDIO_FULL_SCALE = 400000
 
 
-def psm_audio_percent(value: str) -> int:
-    """PSM1000 AUDIO_IN_LVL_L/_R meter -> 0-100% against PSM_AUDIO_FULL_SCALE."""
+def psm_audio_percent(value: str, floor: int = -48, ceiling: int = 0) -> int:
+    """PSM1000 AUDIO_IN_LVL_L/_R linear-amplitude meter -> 0-100%.
+
+    Convert to dBFS against PSM_AUDIO_FULL_SCALE, then window onto [floor, ceiling] dB.
+    """
     try:
         raw = int(str(value).strip())
     except (TypeError, ValueError):
         return 0
-    return max(0, min(100, round(raw / PSM_AUDIO_FULL_SCALE * 100)))
+    if raw <= 0:
+        return 0
+    dbfs = 20 * math.log10(raw / PSM_AUDIO_FULL_SCALE)
+    return max(0, min(100, round((dbfs - floor) / (ceiling - floor) * 100)))
 
 
 def psm_rf_muted(value: str) -> bool:

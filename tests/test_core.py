@@ -16,12 +16,15 @@ from app.modules.ndi import NDIRuntime
 from app.modules.media_cache import PlanningCenterMediaCache
 from app.modules.shure import (
     PSM1000Client,
+    PSM_AUDIO_FULL_SCALE,
     ShureClient,
     axient_antenna_label,
+    axient_meter_percent,
     battery_charge_percent,
     battery_percent,
     format_frequency,
     percent,
+    psm_audio_percent,
     psm_pack_card,
     psm_rf_muted,
     psm_rf_power,
@@ -683,6 +686,16 @@ class ShureTests(unittest.TestCase):
         self.assertEqual(axient_antenna_label("BRXB"), "Ant A+B+D")
         self.assertEqual(axient_antenna_label("XX"), "")
 
+    def test_axient_meter_windows_track_the_calibrated_ranges(self):
+        # meter byte -> actual dB = byte - 120. RF window -90..-45 dBm (bench-calibrated).
+        self.assertEqual(axient_meter_percent("30", -90, -45), 0)     # -90 dBm floor
+        self.assertEqual(axient_meter_percent("75", -90, -45), 100)   # -45 dBm ceiling
+        self.assertEqual(axient_meter_percent("12", -90, -45), 0)     # no-TX noise floor, clamped
+        # audio window -50..-6 dBFS.
+        self.assertEqual(axient_meter_percent("70", -50, -6), 0)      # -50 dBFS silent
+        self.assertEqual(axient_meter_percent("114", -50, -6), 100)   # -6 dBFS loudest
+        self.assertGreater(axient_meter_percent("100", -50, -6), 50)  # -20 dBFS normal singing
+
 
 class ShureStatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_tx_and_battery_sentinel_report_transmitter_off(self):
@@ -807,6 +820,16 @@ class PSM1000Tests(unittest.TestCase):
         self.assertEqual(psm_rf_power("010"), "10 mW")
         self.assertEqual(psm_rf_power("100"), "100 mW")
 
+    def test_psm_audio_percent_maps_linear_amplitude_through_dbfs(self):
+        # P10T AUDIO_IN_LVL is linear amplitude; 0 dBFS at PSM_AUDIO_FULL_SCALE,
+        # law dBFS = 20*log10(raw / FS), then windowed onto -48..0 dBFS.
+        self.assertEqual(psm_audio_percent(str(PSM_AUDIO_FULL_SCALE)), 100)   # 0 dBFS
+        self.assertEqual(psm_audio_percent("300"), 0)                         # silence idle (~-62 dBFS)
+        self.assertEqual(psm_audio_percent("0"), 0)
+        self.assertEqual(psm_audio_percent("bad"), 0)
+        half = psm_audio_percent(str(PSM_AUDIO_FULL_SCALE // 2))              # -6 dBFS
+        self.assertTrue(85 <= half <= 90, half)
+
 
 class PSM1000StatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_rack_fans_transmitters_out_to_labelled_pack_cards(self):
@@ -818,11 +841,13 @@ class PSM1000StatusTests(unittest.IsolatedAsyncioTestCase):
                 if self.done:
                     return b""
                 self.done = True
+                # AUDIO_IN_LVL_L/_R are linear-amplitude (full scale ~400000); pick values
+                # in the real P10T range so psm_audio_percent maps them to distinct levels.
                 return (
                     b"< REPORT 1 CHAN_NAME IEM >\r\n< REPORT 1 FREQUENCY 578000 >\r\n< REPORT 1 RF_MUTE 0 >\r\n"
-                    b"< REPORT 1 RF_TX_LVL 50 >\r\n< REPORT 1 AUDIO_IN_LVL_L 900 >\r\n< REPORT 1 AUDIO_IN_LVL_R 850 >\r\n"
+                    b"< REPORT 1 RF_TX_LVL 50 >\r\n< REPORT 1 AUDIO_IN_LVL_L 220000 >\r\n< REPORT 1 AUDIO_IN_LVL_R 160000 >\r\n"
                     b"< REPORT 2 CHAN_NAME IEM 4/5 >\r\n< REPORT 2 FREQUENCY 581200 >\r\n< REPORT 2 RF_MUTE 1 >\r\n"
-                    b"< REPORT 2 RF_TX_LVL 50 >\r\n< REPORT 2 AUDIO_IN_LVL_L 600 >\r\n< REPORT 2 AUDIO_IN_LVL_R 300 >\r\n"
+                    b"< REPORT 2 RF_TX_LVL 50 >\r\n< REPORT 2 AUDIO_IN_LVL_L 95000 >\r\n< REPORT 2 AUDIO_IN_LVL_R 30000 >\r\n"
                 )
 
         class Writer:
